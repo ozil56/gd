@@ -44,11 +44,26 @@
     border-radius: var(--radius);
     box-shadow: var(--shadow);
     padding: 10px 12px;
-    display:flex; align-items:center; justify-content:space-between;
+    display:flex; align-items:flex-start; gap:12px;
+    flex-wrap:wrap;
   }
   .title{display:flex; align-items:center; gap:8px; font-weight:800; color:var(--brand)}
   .title .emoji{font-size:20px}
-  .top-actions{display:flex; gap:8px}
+  .session-info{
+    display:flex;
+    flex-direction:column;
+    gap:2px;
+    font-size:12px;
+    color:var(--muted);
+    min-width:160px;
+  }
+  .session-info .game-id{font-weight:600; color:var(--text);}
+  .session-info .status{padding:0; box-shadow:none; background:transparent;}
+  .session-info .status[data-tone="error"]{color:var(--brand);}
+  .session-info .status[data-tone="warn"]{color:var(--warn);}
+  .session-info .status[data-tone="ok"]{color:var(--ok);}
+  .session-info .status[data-tone="sync"]{color:var(--info);}
+  .top-actions{display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end;}
   .btn{
     border:0; border-radius:10px; padding:8px 10px; font-weight:700; cursor:pointer;
     background:#f3f4f6; color:#111827;
@@ -177,7 +192,13 @@
     <!-- 顶部栏 -->
     <div class="topbar">
       <div class="title"><span class="emoji">🎴</span>掼蛋记分器</div>
+      <div class="session-info">
+        <div class="game-id">牌局ID：<span id="gameIdDisplay">加载中…</span></div>
+        <div class="status" id="syncStatus" data-tone="sync">同步中…</div>
+      </div>
       <div class="top-actions">
+        <button class="btn ghost" id="btnCopyLink">复制链接</button>
+        <button class="btn warn" id="btnNewGame">新牌局</button>
         <button class="btn ghost" id="btnHistory">历史</button>
         <button class="btn danger" id="btnReset">重置</button>
       </div>
@@ -263,40 +284,235 @@
 /* ===================== 基本常量 ===================== */
 const LEVELS = ['2','3','4','5','6','7','8','9','10','J','Q','K','A'];
 const MAX_INDEX = 12; // 'A'
-const STORAGE_KEY = 'guandan-state-v2';
 const APPLY_WINNER_DELTA_EVEN_IF_OPP_AT_A = true; // 若希望到A后只判庄家，不再涨级，改为 false
+const API_BASE = '/api';
+
+let currentGameId = null;
+let isReady = false;
+let statusClearTimer = null;
 
 /* ===================== 状态及持久化 ===================== */
 function freshState(){
+  const now = new Date().toISOString();
   return {
     aLevel: 0, // index in LEVELS
     bLevel: 0,
     dealer: null, // 'A' | 'B' | null
     a1Fails: { A:0, B:0 }, // 仅在“庄家在A且输”时累计；到3回2并清零
     history: [],           // [{winner:'A'|'B', delta:1|2|3, pattern:'一四'等, notes:[], ts:number}]
-    gameOver: false
+    gameOver: false,
+    meta: {
+      id: null,
+      createdAt: now,
+      updatedAt: now
+    }
   };
 }
+
+function hydrateState(remoteState, id){
+  const base = freshState();
+  const incoming = (remoteState && typeof remoteState === 'object') ? remoteState : {};
+  const merged = Object.assign({}, base, incoming);
+  merged.a1Fails = Object.assign({}, base.a1Fails, incoming.a1Fails || {});
+  merged.history = Array.isArray(incoming.history) ? incoming.history.map(item => ({...item})) : [];
+  merged.meta = Object.assign({}, base.meta, incoming.meta || {});
+  if(id) merged.meta.id = id;
+  if(!merged.meta.createdAt) merged.meta.createdAt = base.meta.createdAt;
+  if(!merged.meta.updatedAt) merged.meta.updatedAt = merged.meta.createdAt;
+  return merged;
+}
+
 let state = freshState();
 
-function save(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
-function load(){
-  try{
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if(!raw) return;
-    const obj = JSON.parse(raw);
-    // 兼容校验
-    if(!obj || typeof obj !== 'object') return;
-    state = Object.assign(freshState(), obj);
-    // 修复可能缺失的字段
-    if(!state.a1Fails) state.a1Fails = {A:0,B:0};
-    if(!Array.isArray(state.history)) state.history = [];
-  }catch(e){ console.warn('读取存档失败，使用初始状态', e); }
+/* ===================== 网络与同步 ===================== */
+async function apiFetchGame(id){
+  const res = await fetch(`${API_BASE}/games/${encodeURIComponent(id)}`);
+  if(res.status === 404){
+    const err = new Error('NOT_FOUND');
+    err.code = 'NOT_FOUND';
+    throw err;
+  }
+  if(!res.ok){
+    throw new Error('FETCH_FAILED');
+  }
+  return res.json();
 }
-load();
+
+async function apiCreateGame(initialState){
+  const res = await fetch(`${API_BASE}/games`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ state: initialState })
+  });
+  if(!res.ok){
+    throw new Error('CREATE_FAILED');
+  }
+  return res.json();
+}
+
+async function apiUpdateGame(id, nextState){
+  const res = await fetch(`${API_BASE}/games/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ state: nextState })
+  });
+  if(!res.ok){
+    throw new Error('SAVE_FAILED');
+  }
+  return res.json();
+}
+
+function updateUrlWithId(id){
+  if(!id) return;
+  const url = new URL(window.location.href);
+  url.searchParams.set('id', id);
+  window.history.replaceState(null, '', url);
+}
+
+function updateGameIdDisplay(){
+  const display = document.getElementById('gameIdDisplay');
+  if(display){
+    if(currentGameId){
+      display.textContent = currentGameId;
+    }else if(!isReady){
+      display.textContent = '加载中…';
+    }else{
+      display.textContent = '—';
+    }
+  }
+  if(currentGameId){
+    document.title = `掼蛋记分器 · #${currentGameId}`;
+  }else if(isReady){
+    document.title = '掼蛋记分器 · 未编号';
+  }else{
+    document.title = '掼蛋记分器';
+  }
+}
+
+function showStatus(message, tone='info'){
+  const statusEl = document.getElementById('syncStatus');
+  if(!statusEl) return;
+  statusEl.textContent = message || '';
+  if(tone){
+    statusEl.setAttribute('data-tone', tone);
+  }else{
+    statusEl.removeAttribute('data-tone');
+  }
+  if(statusClearTimer){
+    clearTimeout(statusClearTimer);
+    statusClearTimer = null;
+  }
+  if(tone === 'ok'){
+    statusClearTimer = setTimeout(()=>{
+      if(statusEl.getAttribute('data-tone') === 'ok'){
+        statusEl.textContent = '';
+        statusEl.removeAttribute('data-tone');
+      }
+    }, 2000);
+  }
+}
+
+async function persistState(){
+  if(!isReady || !currentGameId) return;
+  state.meta = Object.assign({}, state.meta || {}, {
+    id: currentGameId,
+    updatedAt: new Date().toISOString()
+  });
+  try{
+    showStatus('同步中…', 'sync');
+    await apiUpdateGame(currentGameId, state);
+    showStatus('已保存', 'ok');
+  }catch(err){
+    console.error('保存失败', err);
+    showStatus('同步失败，请稍后重试', 'error');
+  }
+}
+
+function buildShareLink(){
+  const url = new URL(window.location.href);
+  if(currentGameId){
+    url.searchParams.set('id', currentGameId);
+  }
+  return url.toString();
+}
+
+async function copyShareLink(){
+  if(!currentGameId) return;
+  const text = buildShareLink();
+  try{
+    await navigator.clipboard.writeText(text);
+    showStatus('链接已复制', 'ok');
+  }catch(err){
+    console.warn('Clipboard 复制失败，尝试使用提示框', err);
+    window.prompt('手动复制链接', text);
+  }
+}
+
+async function createNewGameFromUI(){
+  const confirmMsg = '创建新牌局将生成新的牌局ID，当前数据不会自动保留。继续吗？';
+  if(!window.confirm(confirmMsg)) return;
+  const initial = freshState();
+  try{
+    showStatus('创建新牌局中…', 'sync');
+    const created = await apiCreateGame(initial);
+    currentGameId = created.id;
+    state = hydrateState(created.state || initial, currentGameId);
+    updateUrlWithId(currentGameId);
+    isReady = true;
+    updateUI();
+    showStatus('已创建新牌局', 'ok');
+  }catch(err){
+    console.error('创建新牌局失败', err);
+    showStatus('创建新牌局失败', 'error');
+  }
+}
+
+async function initialize(){
+  const params = new URLSearchParams(window.location.search);
+  const requestedId = params.get('id');
+  let loaded = false;
+  showStatus('加载中…', 'sync');
+  try{
+    if(requestedId){
+      const remote = await apiFetchGame(requestedId);
+      currentGameId = remote.id || requestedId;
+      state = hydrateState(remote.state, currentGameId);
+      updateUrlWithId(currentGameId);
+      showStatus('牌局已加载', 'ok');
+    }else{
+      const initial = freshState();
+      const created = await apiCreateGame(initial);
+      currentGameId = created.id;
+      state = hydrateState(created.state || initial, currentGameId);
+      updateUrlWithId(currentGameId);
+      showStatus('已创建新牌局', 'ok');
+    }
+    loaded = true;
+  }catch(err){
+    if(err && err.code === 'NOT_FOUND'){
+      try{
+        const initial = freshState();
+        const created = await apiCreateGame(initial);
+        currentGameId = created.id;
+        state = hydrateState(created.state || initial, currentGameId);
+        updateUrlWithId(currentGameId);
+        showStatus('指定牌局不存在，已创建新牌局', 'warn');
+        loaded = true;
+      }catch(inner){
+        console.error('自动创建新牌局失败', inner);
+        showStatus('无法创建新牌局，请稍后再试', 'error');
+      }
+    }else{
+      console.error('加载牌局失败', err);
+      showStatus('加载失败，请稍后刷新', 'error');
+    }
+  }
+  isReady = loaded;
+  updateUI();
+}
 
 /* ===================== 工具函数 ===================== */
-const el = id => document.getElementById(id);
+function el(id){ return document.getElementById(id); }
 function teamLevel(team){ return team==='A' ? state.aLevel : state.bLevel; }
 function setTeamLevel(team, idx){ if(team==='A') state.aLevel = idx; else state.bLevel = idx; }
 function clampA(idx){ return Math.min(MAX_INDEX, Math.max(0, idx)); }
@@ -366,7 +582,10 @@ function applyRoundCore(winner, delta, pattern, collectNotes=true){
 /* 撤回：回放历史重算 */
 function recomputeFromHistory(){
   const snapshot = state.history.map(x => ({winner:x.winner, delta:x.delta, pattern:x.pattern}));
+  const previousMeta = state.meta;
   state = freshState();
+  state.meta = Object.assign({}, state.meta, previousMeta || {});
+  state.meta.id = currentGameId;
   for(const h of snapshot){
     applyRoundCore(h.winner, h.delta, h.pattern);
     if(state.gameOver) break; // 若某一步就终局，后面本不应存在，但稳妥处理
@@ -375,27 +594,35 @@ function recomputeFromHistory(){
 
 /* ===================== 事件处理 ===================== */
 function record(winner, delta, pattern){
-  if(state.gameOver) return;
+  if(!isReady || state.gameOver) return;
   applyRoundCore(winner, delta, pattern);
-  save();
+  state.meta.updatedAt = new Date().toISOString();
   updateUI();
+  persistState();
 }
 function undo(){
-  if(state.history.length === 0) return;
+  if(!isReady || state.history.length === 0) return;
   state.history.pop();
   recomputeFromHistory();
-  save();
+  state.meta.updatedAt = new Date().toISOString();
   updateUI();
+  persistState();
 }
 function resetAll(){
-  if(!confirm('确定要重置本局所有数据吗？（本地存档也会清空）')) return;
+  if(!isReady) return;
+  if(!confirm('确定要重置本局所有数据吗？（云端存档也会清空）')) return;
+  const previousMeta = state.meta;
   state = freshState();
-  save();
+  state.meta = Object.assign({}, state.meta, previousMeta || {});
+  state.meta.id = currentGameId;
+  state.meta.updatedAt = new Date().toISOString();
   updateUI();
+  persistState();
 }
 
 /* ===================== UI 渲染 ===================== */
 function updateUI(){
+  updateGameIdDisplay();
   // 牌值
   el('lvA').textContent = LEVELS[state.aLevel];
   el('lvB').textContent = LEVELS[state.bLevel];
@@ -411,12 +638,16 @@ function updateUI(){
   el('cardB').classList.toggle('dealing', state.dealer==='B');
 
   // 按钮可用性
-  const disabled = state.gameOver;
+  const disabled = (!isReady) || state.gameOver;
   ['btnA12','btnA13','btnA14','btnB12','btnB13','btnB14'].forEach(id=>{
     el(id).disabled = disabled;
   });
   // 撤回是否可用
-  el('btnUndo').disabled = state.history.length===0;
+  el('btnUndo').disabled = (!isReady) || state.history.length===0;
+  const allowActions = !!isReady;
+  if(el('btnReset')) el('btnReset').disabled = !allowActions;
+  if(el('btnHistory')) el('btnHistory').disabled = !allowActions;
+  if(el('btnCopyLink')) el('btnCopyLink').disabled = (!allowActions) || !currentGameId;
 
   // 终局横幅
   const winnerLayer = el('winner');
@@ -456,7 +687,9 @@ el('btnB14').addEventListener('click',()=>record('B',1,'一四'));
 el('btnUndo').addEventListener('click', undo);
 el('btnReset').addEventListener('click', resetAll);
 
-el('btnHistory').addEventListener('click', ()=>{ el('historyOverlay').style.display='flex'; });
+el('btnCopyLink').addEventListener('click', ()=>{ if(!isReady || !currentGameId) return; copyShareLink(); });
+el('btnNewGame').addEventListener('click', ()=>{ createNewGameFromUI(); });
+el('btnHistory').addEventListener('click', ()=>{ if(!isReady) return; el('historyOverlay').style.display='flex'; });
 el('btnCloseHistory').addEventListener('click', ()=>{ el('historyOverlay').style.display='none'; });
 el('btnExport').addEventListener('click', ()=>{
   const data = JSON.stringify(state, null, 2);
@@ -473,6 +706,7 @@ el('closeWinner').addEventListener('click', ()=>{ el('winner').style.display='no
 
 /* ===================== 首次渲染 ===================== */
 updateUI();
+initialize();
 </script>
 </body>
 </html>
