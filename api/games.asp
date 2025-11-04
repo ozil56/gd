@@ -1,7 +1,8 @@
-<%@LANGUAGE="JScript"%>
+<%@LANGUAGE="JScript" CODEPAGE="65001"%>
 <%
-Response.ContentType = "application/json";
+Response.CodePage = 65001;
 Response.Charset = "utf-8";
+Response.ContentType = "application/json";
 Response.AddHeader("Cache-Control", "no-store, no-cache, must-revalidate");
 Response.AddHeader("Pragma", "no-cache");
 Response.AddHeader("Expires", "0");
