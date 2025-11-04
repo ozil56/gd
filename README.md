@@ -4,6 +4,8 @@
 
 ## 快速开始
 
+### 方案 A：Node.js（开发/调试环境）
+
 1. 安装依赖：
    ```bash
    npm install
@@ -14,6 +16,14 @@
    npm start
    ```
 3. 浏览器访问 `http://localhost:3000/index.html`。首次访问会自动创建当日首个牌局并生成形如 `202511040001` 的牌局 ID。
+
+### 方案 B：Classic ASP（生产/共享空间）
+
+如果目标服务器仅支持 Classic ASP，可直接部署 `index.html`、`data.json` 以及 `api/games.asp`：
+
+1. 将仓库内容拷贝至站点根目录，确保 `data.json` 具有写入权限。
+2. 访问 `index.html` 即可使用。前端会请求 `api/games.asp` 来创建、读取和更新牌局。
+3. 若需要在同一站点托管多个应用，请确保 `api/games.asp` 的目录结构保持 `index.html` 同级的 `api/` 子目录。
 
 ## 牌局分享
 
@@ -38,7 +48,9 @@
 
 ```
 ├── index.html    # 前端界面与逻辑
-├── server.js     # Express 文件存储后端
+├── server.js     # Express 文件存储后端（可选）
+├── api/
+│   └── games.asp # Classic ASP 文件存储后端
 ├── data.json     # 牌局数据（运行时写入）
 ├── package.json  # 项目依赖
 └── README.md     # 本说明文档
