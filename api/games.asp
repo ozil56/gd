@@ -5,6 +5,7 @@ Response.Charset = "utf-8";
 Response.AddHeader("Cache-Control", "no-store, no-cache, must-revalidate");
 Response.AddHeader("Pragma", "no-cache");
 Response.AddHeader("Expires", "0");
+applyCors();
 
 var RETENTION_MS = 365 * 24 * 60 * 60 * 1000; // 1 year
 var dataPath = Server.MapPath("../data.json");
@@ -12,7 +13,10 @@ var method = String(Request.ServerVariables("REQUEST_METHOD"));
 var gameId = Request.QueryString("id");
 
 try {
-  if (method === "GET") {
+  if (method === "OPTIONS") {
+    setStatus(204);
+    Response.Write("");
+  } else if (method === "GET") {
     if (!gameId) {
       throw httpError(400, "ID_REQUIRED", "缺少牌局 ID");
     }
@@ -48,7 +52,7 @@ try {
     writeStore(data);
     sendJson(200, { id: gameId, state: stored });
   } else {
-    Response.AddHeader("Allow", "GET, POST, PUT");
+    Response.AddHeader("Allow", "GET, POST, PUT, OPTIONS");
     throw httpError(405, "METHOD_NOT_ALLOWED", "不支持的请求方法");
   }
 } catch (ex) {
@@ -275,6 +279,7 @@ function sendJson(status, payload) {
 
 function setStatus(code) {
   var map = {
+    204: "204 No Content",
     200: "200 OK",
     201: "201 Created",
     400: "400 Bad Request",
@@ -284,5 +289,11 @@ function setStatus(code) {
   };
   var text = map[code] || (code + "");
   Response.Status = text;
+}
+
+function applyCors() {
+  Response.AddHeader("Access-Control-Allow-Origin", "*");
+  Response.AddHeader("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS");
+  Response.AddHeader("Access-Control-Allow-Headers", "Content-Type");
 }
 %>
