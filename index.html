@@ -87,7 +87,7 @@
 
   .row{
     display:grid;
-    grid-template-columns: 1fr 44%;
+    grid-template-columns: minmax(0, 80%) minmax(0, 20%);
     gap: 10px;
     align-items: center;
   }
@@ -109,6 +109,30 @@
   }
   .badge{
     font-size:12px; font-weight:800; padding:2px 6px; border-radius:999px; background:#f3f4f6; color:#374151;
+  }
+  .badge.team-name-btn{
+    border:none;
+    background:#f3f4f6;
+    cursor:pointer;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    font-size:12px;
+    padding:6px 5px;
+    min-width:60px;
+    line-height:1.2;
+    white-space:nowrap;
+  }
+  .badge.team-name-btn:focus{
+    outline:2px solid rgba(37,99,235,0.4);
+    outline-offset:1px;
+  }
+  .badge.team-name-btn:hover{
+    background:#e2e8f0;
+  }
+  .badge.team-name-btn:disabled{
+    cursor:not-allowed;
+    opacity:0.6;
   }
   .dealer{background: #fde68a; color:#92400e;}
   .level{
@@ -218,12 +242,12 @@
             <span id="infoA">距A还差 12 级</span>
             <span class="fails" id="failA">A1失败：0/3</span>
           </div>
-          <span class="badge">A队</span>
+          <button type="button" class="badge team-name-btn" id="teamNameA" data-team="A">A队</button>
         </div>
         <div class="btns">
-          <button class="winbtn green"  id="btnA12">A队 · 一二（+3）</button>
-          <button class="winbtn orange" id="btnA13">A队 · 一三（+2）</button>
-          <button class="winbtn red"    id="btnA14">A队 · 一四（+1）</button>
+          <button class="winbtn green"  id="btnA12">双上 +3</button>
+          <button class="winbtn orange" id="btnA13">一三 +2</button>
+          <button class="winbtn red"    id="btnA14">一四 +1</button>
         </div>
       </div>
       <!-- B队 -->
@@ -238,12 +262,12 @@
             <span id="infoB">距A还差 12 级</span>
             <span class="fails" id="failB">A1失败：0/3</span>
           </div>
-          <span class="badge">B队</span>
+          <button type="button" class="badge team-name-btn" id="teamNameB" data-team="B">B队</button>
         </div>
         <div class="btns">
-          <button class="winbtn green"  id="btnB12">B队 · 一二（+3）</button>
-          <button class="winbtn orange" id="btnB13">B队 · 一三（+2）</button>
-          <button class="winbtn red"    id="btnB14">B队 · 一四（+1）</button>
+          <button class="winbtn green"  id="btnB12">双上 +3</button>
+          <button class="winbtn orange" id="btnB13">一三 +2</button>
+          <button class="winbtn red"    id="btnB14">一四 +1</button>
         </div>
       </div>
     </div>
@@ -284,8 +308,164 @@
 /* ===================== 基本常量 ===================== */
 const LEVELS = ['2','3','4','5','6','7','8','9','10','J','Q','K','A'];
 const MAX_INDEX = 12; // 'A'
-const APPLY_WINNER_DELTA_EVEN_IF_OPP_AT_A = true; // 若希望到A后只判庄家，不再涨级，改为 false
-const API_BASE = '/api/games.asp';
+const APPLY_WINNER_DELTA_EVEN_IF_OPP_AT_A = true;
+
+const TEAM_DEFAULTS = { A: 'A队', B: 'B队' };
+
+function sanitizeTeamName(value, fallback = ''){
+  if(typeof value !== 'string') return fallback;
+  const trimmed = value.trim();
+  if(!trimmed) return fallback;
+  return trimmed.slice(0, 12);
+}
+
+function mergeTeams(teams){
+  const merged = Object.assign({}, TEAM_DEFAULTS);
+  if(teams && typeof teams === 'object'){
+    if(Object.prototype.hasOwnProperty.call(teams, 'A')){
+      merged.A = sanitizeTeamName(teams.A, merged.A);
+    }
+    if(Object.prototype.hasOwnProperty.call(teams, 'B')){
+      merged.B = sanitizeTeamName(teams.B, merged.B);
+    }
+  }
+  return merged;
+}
+
+const TEAM_ACTIONS = {
+  A: [
+    { id: 'btnA12', delta: 3, label: '双上' },
+    { id: 'btnA13', delta: 2, label: '一三' },
+    { id: 'btnA14', delta: 1, label: '一四' }
+  ],
+  B: [
+    { id: 'btnB12', delta: 3, label: '双上' },
+    { id: 'btnB13', delta: 2, label: '一三' },
+    { id: 'btnB14', delta: 1, label: '一四' }
+  ]
+};
+
+function getTeamName(code){
+  const teams = (state && state.teams) ? state.teams : TEAM_DEFAULTS;
+  if(!code) return '';
+  const key = String(code).toUpperCase();
+  return teams[key] || TEAM_DEFAULTS[key] || key;
+}
+
+function promptTeamName(team){
+  if(!isReady) return;
+  const key = String(team).toUpperCase();
+  const current = getTeamName(key);
+  const input = window.prompt(`请输入${current}的新名称`, current);
+  if(input === null) return;
+  const fallback = TEAM_DEFAULTS[key] || current;
+  const normalized = sanitizeTeamName(input, fallback);
+  if(!normalized || normalized === current) return;
+  state.teams = mergeTeams(Object.assign({}, state.teams || {}, { [key]: normalized }));
+  state.meta = state.meta || {};
+  state.meta.updatedAt = new Date().toISOString();
+  updateUI();
+  persistState();
+}
+
+
+ // 若希望到A后只判庄家，不再涨级，改为 false
+function resolveApiBase(){
+  if(window.GUANDAN_API_BASE){
+    return window.GUANDAN_API_BASE;
+  }
+  const meta = document.querySelector('meta[name="guandan-api-base"]');
+  if(meta && meta.content){
+    return meta.content;
+  }
+  let origin = window.location.origin || '';
+  if(origin === 'null'){
+    origin = '';
+  }
+  let path = window.location.pathname || '/';
+  if(!path){
+    path = '/';
+  }
+  const parts = path.split('/');
+  if(!(parts.length && parts[parts.length - 1] === '')){
+    const lastSegment = parts.length ? parts[parts.length - 1] : '';
+    if(lastSegment && lastSegment.indexOf('.') === -1){
+      path = path + '/';
+    }else{
+      parts.pop();
+      path = parts.join('/');
+      if(path === ''){
+        path = '/';
+      }
+    }
+  }
+  if(path.charAt(path.length - 1) !== '/'){
+    path += '/';
+  }
+  return (origin ? origin : '') + path + 'games.asp';
+}
+
+const API_BASE = resolveApiBase();
+console.info('[guandan] API endpoint ->', API_BASE);
+
+async function readJsonSafely(res){
+  const text = await res.text();
+  if(!text){
+    return { json: null, text: '', parseError: null };
+  }
+  try{
+    return { json: JSON.parse(text), text, parseError: null };
+  }catch(parseError){
+    return { json: null, text, parseError };
+  }
+}
+
+function extractServerMessage(detail){
+  if(!detail) return '';
+  if(typeof detail === 'string'){
+    return detail;
+  }
+  let message = '';
+  if(detail.error_msg){
+    message = detail.error_msg;
+  }else if(detail.message){
+    message = detail.message;
+  }else if(detail.error){
+    message = detail.error;
+  }else if(detail.debug && detail.debug.description){
+    message = detail.debug.description;
+  }else if(detail.debug && detail.debug.message){
+    message = detail.debug.message;
+  }
+  if(!message && detail.debug && detail.debug.number){
+    message = '错误代码 ' + detail.debug.number;
+  }
+  if(detail.debug && detail.debug.dataPath){
+    const suffix = '数据文件: ' + detail.debug.dataPath;
+    if(message){
+      message += '（' + suffix + '）';
+    }else{
+      message = suffix;
+    }
+  }
+  if(!message && detail.debug && detail.debug.dataPathSource){
+    message = '数据来源: ' + detail.debug.dataPathSource;
+  }
+  return message || '';
+}
+
+function logApiFailure(context, res, payload){
+  try{
+    console.error('[api] ' + context + ' failed', {
+      status: res ? res.status : null,
+      statusText: res ? res.statusText : null,
+      payload: payload ? (payload.json !== null ? payload.json : payload.text) : null,
+      parseError: payload ? payload.parseError : null
+    });
+  }catch(logErr){
+    console.error('[api] ' + context + ' failed', logErr);
+  }
+}
 
 let currentGameId = null;
 let isReady = false;
@@ -301,6 +481,7 @@ function freshState(){
     a1Fails: { A:0, B:0 }, // 仅在“庄家在A且输”时累计；到3回2并清零
     history: [],           // [{winner:'A'|'B', delta:1|2|3, pattern:'一四'等, notes:[], ts:number}]
     gameOver: false,
+    teams: mergeTeams(),
     meta: {
       id: null,
       createdAt: now,
@@ -313,6 +494,7 @@ function hydrateState(remoteState, id){
   const base = freshState();
   const incoming = (remoteState && typeof remoteState === 'object') ? remoteState : {};
   const merged = Object.assign({}, base, incoming);
+  merged.teams = mergeTeams(merged.teams);
   merged.a1Fails = Object.assign({}, base.a1Fails, incoming.a1Fails || {});
   merged.history = Array.isArray(incoming.history) ? incoming.history.map(item => ({...item})) : [];
   merged.meta = Object.assign({}, base.meta, incoming.meta || {});
@@ -323,19 +505,39 @@ function hydrateState(remoteState, id){
 }
 
 let state = freshState();
+let autoRefreshTimer = null;
+let isAutoSyncing = false;
+let isSaving = false;
 
 /* ===================== 网络与同步 ===================== */
 async function apiFetchGame(id){
   const res = await fetch(`${API_BASE}?id=${encodeURIComponent(id)}`);
+  const payload = await readJsonSafely(res);
   if(res.status === 404){
     const err = new Error('NOT_FOUND');
     err.code = 'NOT_FOUND';
+    err.status = res.status;
+    err.detail = payload.json !== null ? payload.json : payload.text;
+    logApiFailure('fetchGame (404)', res, payload);
     throw err;
   }
   if(!res.ok){
-    throw new Error('FETCH_FAILED');
+    const err = new Error('FETCH_FAILED');
+    err.status = res.status;
+    err.detail = payload.json !== null ? payload.json : payload.text;
+    err.code = (payload.json && payload.json.error) || 'FETCH_FAILED';
+    logApiFailure('fetchGame', res, payload);
+    throw err;
   }
-  return res.json();
+  if(payload.parseError){
+    const err = new Error('INVALID_JSON');
+    err.code = 'INVALID_JSON';
+    err.detail = payload.text;
+    err.status = res.status;
+    logApiFailure('fetchGame parse', res, payload);
+    throw err;
+  }
+  return payload.json;
 }
 
 async function apiCreateGame(initialState){
@@ -344,22 +546,50 @@ async function apiCreateGame(initialState){
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ state: initialState })
   });
+  const payload = await readJsonSafely(res);
   if(!res.ok){
-    throw new Error('CREATE_FAILED');
+    const err = new Error('CREATE_FAILED');
+    err.status = res.status;
+    err.detail = payload.json !== null ? payload.json : payload.text;
+    err.code = (payload.json && (payload.json.error || payload.json.error_code)) || 'CREATE_FAILED';
+    logApiFailure('createGame', res, payload);
+    throw err;
   }
-  return res.json();
+  if(payload.parseError){
+    const err = new Error('INVALID_JSON');
+    err.code = 'INVALID_JSON';
+    err.detail = payload.text;
+    err.status = res.status;
+    logApiFailure('createGame parse', res, payload);
+    throw err;
+  }
+  return payload.json;
 }
 
 async function apiUpdateGame(id, nextState){
   const res = await fetch(`${API_BASE}?id=${encodeURIComponent(id)}`, {
-    method: 'PUT',
+    method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ state: nextState })
   });
+  const payload = await readJsonSafely(res);
   if(!res.ok){
-    throw new Error('SAVE_FAILED');
+    const err = new Error('SAVE_FAILED');
+    err.status = res.status;
+    err.detail = payload.json !== null ? payload.json : payload.text;
+    err.code = (payload.json && (payload.json.error || payload.json.error_code)) || 'SAVE_FAILED';
+    logApiFailure('updateGame', res, payload);
+    throw err;
   }
-  return res.json();
+  if(payload.parseError){
+    const err = new Error('INVALID_JSON');
+    err.code = 'INVALID_JSON';
+    err.detail = payload.text;
+    err.status = res.status;
+    logApiFailure('updateGame parse', res, payload);
+    throw err;
+  }
+  return payload.json;
 }
 
 function updateUrlWithId(id){
@@ -412,20 +642,84 @@ function showStatus(message, tone='info'){
   }
 }
 
+
 async function persistState(){
   if(!isReady || !currentGameId) return;
   state.meta = Object.assign({}, state.meta || {}, {
     id: currentGameId,
     updatedAt: new Date().toISOString()
   });
+  let saved = null;
+  isSaving = true;
+  const previousId = currentGameId;
   try{
-    showStatus('同步中…', 'sync');
-    await apiUpdateGame(currentGameId, state);
-    showStatus('已保存', 'ok');
+    showStatus('正在同步...', 'sync');
+    saved = await apiUpdateGame(currentGameId, state);
+    if(saved){
+      if(saved.id){
+        currentGameId = saved.id;
+      }
+      if(saved.state){
+        state = hydrateState(saved.state, currentGameId);
+      }
+    }
+    if(currentGameId !== previousId){
+      updateUrlWithId(currentGameId);
+      startAutoRefresh();
+    } else {
+      updateUrlWithId(currentGameId);
+    }
+    showStatus('已同步', 'ok');
+    updateUI();
   }catch(err){
-    console.error('保存失败', err);
-    showStatus('同步失败，请稍后重试', 'error');
+    console.error('同步失败', err);
+    if(err && err.detail){
+      console.error('server response detail', err.detail);
+    }
+    const extra = extractServerMessage(err && err.detail);
+    const message = extra ? (`同步失败，请稍后重试：${extra}`) : '同步失败，请稍后重试';
+    showStatus(message, 'error');
+  }finally{
+    isSaving = false;
   }
+}
+
+
+
+async function refreshFromServer(options = {}){
+  const forced = options && options.forced;
+  if(!isReady || !currentGameId) return;
+  if(isSaving && !forced) return;
+  if(isAutoSyncing) return;
+  isAutoSyncing = true;
+  const localUpdated = state && state.meta ? state.meta.updatedAt : '';
+  try{
+    const remote = await apiFetchGame(currentGameId);
+    if(!remote || !remote.state){
+      return;
+    }
+    const remoteState = remote.state;
+    const remoteUpdated = (remoteState.meta && remoteState.meta.updatedAt) ? remoteState.meta.updatedAt : '';
+    if(!forced && localUpdated && remoteUpdated && remoteUpdated <= localUpdated){
+      return;
+    }
+    state = hydrateState(remoteState, currentGameId);
+    updateUI();
+  }catch(err){
+    console.warn('自动同步失败', err);
+  }finally{
+    isAutoSyncing = false;
+  }
+}
+
+function startAutoRefresh(){
+  if(autoRefreshTimer){
+    clearInterval(autoRefreshTimer);
+  }
+  autoRefreshTimer = setInterval(()=>{
+    refreshFromServer();
+  }, 2000);
+  refreshFromServer({ forced: true });
 }
 
 function buildShareLink(){
@@ -461,9 +755,15 @@ async function createNewGameFromUI(){
     isReady = true;
     updateUI();
     showStatus('已创建新牌局', 'ok');
+    startAutoRefresh();
   }catch(err){
-    console.error('创建新牌局失败', err);
-    showStatus('创建新牌局失败', 'error');
+    console.error('创建牌局失败', err);
+    if(err && err.detail){
+      console.error('server response detail', err.detail);
+    }
+    const extra = extractServerMessage(err && err.detail);
+    const message = extra ? ('创建牌局失败: ' + extra) : '创建牌局失败';
+    showStatus(message, 'error');
   }
 }
 
@@ -496,7 +796,7 @@ async function initialize(){
         currentGameId = created.id;
         state = hydrateState(created.state || initial, currentGameId);
         updateUrlWithId(currentGameId);
-        showStatus('指定牌局不存在，已创建新牌局', 'warn');
+        showStatus('已创建新牌局', 'warn');
         loaded = true;
       }catch(inner){
         console.error('自动创建新牌局失败', inner);
@@ -509,6 +809,7 @@ async function initialize(){
   }
   isReady = loaded;
   updateUI();
+  startAutoRefresh();
 }
 
 /* ===================== 工具函数 ===================== */
@@ -621,71 +922,112 @@ function resetAll(){
 }
 
 /* ===================== UI 渲染 ===================== */
-function updateUI(){
+
+function updateUI() {
   updateGameIdDisplay();
-  // 牌值
+
+  const nameA = getTeamName('A');
+  const nameB = getTeamName('B');
+
   el('lvA').textContent = LEVELS[state.aLevel];
   el('lvB').textContent = LEVELS[state.bLevel];
-  // 提示
-  el('infoA').textContent = (state.aLevel===MAX_INDEX) ? '已在 A' : `距A还差 ${MAX_INDEX - state.aLevel} 级`;
-  el('infoB').textContent = (state.bLevel===MAX_INDEX) ? '已在 A' : `距A还差 ${MAX_INDEX - state.bLevel} 级`;
-  el('failA').textContent = `A1失败：${state.a1Fails.A||0}/3`;
-  el('failB').textContent = `A1失败：${state.a1Fails.B||0}/3`;
 
-  // 庄家标识
-  el('dealerText').textContent = '当前庄家：' + (state.dealer ? (state.dealer+'队') : '暂无');
-  el('cardA').classList.toggle('dealing', state.dealer==='A');
-  el('cardB').classList.toggle('dealing', state.dealer==='B');
+  const remainingA = MAX_INDEX - state.aLevel;
+  const remainingB = MAX_INDEX - state.bLevel;
+  el('infoA').textContent = state.aLevel === MAX_INDEX ? `${nameA} 已到顶级` : `${nameA} 距顶级还差 ${remainingA} 级`;
+  el('infoB').textContent = state.bLevel === MAX_INDEX ? `${nameB} 已到顶级` : `${nameB} 距顶级还差 ${remainingB} 级`;
+  el('failA').textContent = `${nameA} A1 失守：${state.a1Fails.A || 0}/3`;
+  el('failB').textContent = `${nameB} A1 失守：${state.a1Fails.B || 0}/3`;
 
-  // 按钮可用性
-  const disabled = (!isReady) || state.gameOver;
-  ['btnA12','btnA13','btnA14','btnB12','btnB13','btnB14'].forEach(id=>{
-    el(id).disabled = disabled;
+  const teamBtnA = el('teamNameA');
+  if (teamBtnA) {
+    teamBtnA.textContent = nameA;
+    teamBtnA.disabled = !isReady;
+  }
+  const teamBtnB = el('teamNameB');
+  if (teamBtnB) {
+    teamBtnB.textContent = nameB;
+    teamBtnB.disabled = !isReady;
+  }
+
+  TEAM_ACTIONS.A.forEach(({ id, delta, label }) => {
+    const btn = el(id);
+    if (btn) {
+      btn.textContent = `${label} +${delta}`;
+    }
   });
-  // 撤回是否可用
-  el('btnUndo').disabled = (!isReady) || state.history.length===0;
-  const allowActions = !!isReady;
-  if(el('btnReset')) el('btnReset').disabled = !allowActions;
-  if(el('btnHistory')) el('btnHistory').disabled = !allowActions;
-  if(el('btnCopyLink')) el('btnCopyLink').disabled = (!allowActions) || !currentGameId;
+  TEAM_ACTIONS.B.forEach(({ id, delta, label }) => {
+    const btn = el(id);
+    if (btn) {
+      btn.textContent = `${label} +${delta}`;
+    }
+  });
 
-  // 终局横幅
+  const disabled = (!isReady) || state.gameOver;
+  ['btnA12','btnA13','btnA14','btnB12','btnB13','btnB14'].forEach(id => {
+    const btn = el(id);
+    if (btn) {
+      btn.disabled = disabled;
+    }
+  });
+  const undoButton = el('btnUndo');
+  if (undoButton) {
+    undoButton.disabled = (!isReady) || state.history.length === 0;
+  }
+  const allowActions = !!isReady;
+  if (el('btnReset')) el('btnReset').disabled = !allowActions;
+  if (el('btnHistory')) el('btnHistory').disabled = !allowActions;
+  if (el('btnCopyLink')) el('btnCopyLink').disabled = (!allowActions) || !currentGameId;
+
+  const dealerLabel = state.dealer ? getTeamName(state.dealer) : '未确定';
+  el('dealerText').textContent = `当前庄家：${dealerLabel}`;
+  el('cardA').classList.toggle('dealing', state.dealer === 'A');
+  el('cardB').classList.toggle('dealing', state.dealer === 'B');
+
   const winnerLayer = el('winner');
-  if(state.gameOver){
-    const text = (state.dealer ? `${state.dealer}队 胜！` : '终局');
+  if (state.gameOver) {
+    const text = state.dealer ? `${getTeamName(state.dealer)} 获胜` : '本局结束';
     el('winnerText').textContent = text;
     winnerLayer.style.display = 'flex';
-  }else{
+  } else {
     winnerLayer.style.display = 'none';
   }
 
-  // 历史列表（弹层里）
   const list = el('historyList');
   list.innerHTML = '';
-  state.history.forEach((h, i)=>{
+  state.history.forEach((h, i) => {
     const li = document.createElement('li');
     li.className = 'history-item';
     const left = document.createElement('div');
-    left.innerHTML = `<strong>#${i+1}</strong> <span class="tag">${h.winner}队 ${h.pattern} +${h.delta}</span>`;
+    const winnerName = getTeamName(h.winner);
+    left.innerHTML = `<strong>#${i + 1}</strong> <span class="tag">${winnerName} · ${h.pattern} +${h.delta}</span>`;
     const right = document.createElement('div');
     right.className = 'note';
-    right.textContent = (h.notes && h.notes.length) ? h.notes.join('；') : '';
-    li.appendChild(left); li.appendChild(right);
+    right.textContent = (h.notes && h.notes.length) ? h.notes.join('、') : '';
+    li.appendChild(left);
+    li.appendChild(right);
     list.appendChild(li);
   });
 }
 
+
+
 /* ===================== 绑定事件 ===================== */
-el('btnA12').addEventListener('click',()=>record('A',3,'一二'));
+el('btnA12').addEventListener('click',()=>record('A',3,'双上'));
 el('btnA13').addEventListener('click',()=>record('A',2,'一三'));
 el('btnA14').addEventListener('click',()=>record('A',1,'一四'));
 
-el('btnB12').addEventListener('click',()=>record('B',3,'一二'));
+el('btnB12').addEventListener('click',()=>record('B',3,'双上'));
 el('btnB13').addEventListener('click',()=>record('B',2,'一三'));
 el('btnB14').addEventListener('click',()=>record('B',1,'一四'));
 
 el('btnUndo').addEventListener('click', undo);
 el('btnReset').addEventListener('click', resetAll);
+
+const teamButtonA = el('teamNameA');
+if(teamButtonA){ teamButtonA.addEventListener('click', ()=> promptTeamName('A')); }
+const teamButtonB = el('teamNameB');
+if(teamButtonB){ teamButtonB.addEventListener('click', ()=> promptTeamName('B')); }
 
 el('btnCopyLink').addEventListener('click', ()=>{ if(!isReady || !currentGameId) return; copyShareLink(); });
 el('btnNewGame').addEventListener('click', ()=>{ createNewGameFromUI(); });
@@ -710,3 +1052,6 @@ initialize();
 </script>
 </body>
 </html>
+
+
+
