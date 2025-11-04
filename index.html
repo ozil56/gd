@@ -285,7 +285,7 @@
 const LEVELS = ['2','3','4','5','6','7','8','9','10','J','Q','K','A'];
 const MAX_INDEX = 12; // 'A'
 const APPLY_WINNER_DELTA_EVEN_IF_OPP_AT_A = true; // 若希望到A后只判庄家，不再涨级，改为 false
-const API_BASE = '/api';
+const API_BASE = '/api/games.asp';
 
 let currentGameId = null;
 let isReady = false;
@@ -326,7 +326,7 @@ let state = freshState();
 
 /* ===================== 网络与同步 ===================== */
 async function apiFetchGame(id){
-  const res = await fetch(`${API_BASE}/games/${encodeURIComponent(id)}`);
+  const res = await fetch(`${API_BASE}?id=${encodeURIComponent(id)}`);
   if(res.status === 404){
     const err = new Error('NOT_FOUND');
     err.code = 'NOT_FOUND';
@@ -339,7 +339,7 @@ async function apiFetchGame(id){
 }
 
 async function apiCreateGame(initialState){
-  const res = await fetch(`${API_BASE}/games`, {
+  const res = await fetch(`${API_BASE}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ state: initialState })
@@ -351,7 +351,7 @@ async function apiCreateGame(initialState){
 }
 
 async function apiUpdateGame(id, nextState){
-  const res = await fetch(`${API_BASE}/games/${encodeURIComponent(id)}`, {
+  const res = await fetch(`${API_BASE}?id=${encodeURIComponent(id)}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ state: nextState })
