@@ -57,10 +57,9 @@ try {
     throw httpError(405, "METHOD_NOT_ALLOWED", "不支持的请求方法");
   }
 } catch (ex) {
-  var status = ex.httpStatus || 500;
+  var status = ex && ex.httpStatus ? ex.httpStatus : 500;
   setStatus(status);
-  var payload = ex.payload || { error: "SERVER_ERROR", message: ex.description || ex.message || "Unexpected server error" };
-  Response.Write(stringify(payload));
+  Response.Write(stringify(buildErrorPayload(ex, status)));
 }
 
 Response.End();
@@ -188,6 +187,49 @@ function cloneObject(obj) {
   return parseJson(stringify(obj || {}));
 }
 
+function buildErrorPayload(error, status) {
+  var payload = { ok: false };
+  if (error && error.payload && typeof error.payload === "object") {
+    assign(payload, error.payload);
+  }
+  payload.ok = false;
+  if (typeof payload.error_code === "undefined") {
+    payload.error_code = extractErrorNumber(error, status);
+  }
+  if (!payload.error_msg) {
+    var message = extractErrorMessage(error);
+    if (message) {
+      payload.error_msg = message;
+    } else {
+      payload.error_msg = "UNKNOWN";
+    }
+  }
+  if (!payload.error && error && error.payload && typeof error.payload.error === "string") {
+    payload.error = error.payload.error;
+  }
+  if (!payload.error) {
+    payload.error = "SERVER_ERROR";
+  }
+  return payload;
+}
+
+function extractErrorNumber(error, fallback) {
+  if (error && typeof error.number === "number") {
+    return error.number;
+  }
+  if (typeof fallback === "number") {
+    return fallback;
+  }
+  return -1;
+}
+
+function extractErrorMessage(error) {
+  if (!error) return "";
+  if (error.description) return String(error.description);
+  if (error.message) return String(error.message);
+  return "";
+}
+
 function parseJson(text) {
   if (typeof JSON !== "undefined" && JSON.parse) {
     return JSON.parse(text);
@@ -270,12 +312,18 @@ function httpError(status, code, message) {
   if (message) {
     err.payload.message = message;
   }
+  err.number = status;
   return err;
 }
 
 function sendJson(status, payload) {
   setStatus(status);
-  Response.Write(stringify(payload));
+  var body = {};
+  if (payload && typeof payload === "object") {
+    assign(body, payload);
+  }
+  body.ok = true;
+  Response.Write(stringify(body));
 }
 
 function setStatus(code) {
