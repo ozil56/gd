@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>掼蛋记分器 · 精简版</title>
+<style>
+  :root{
+    --bg: #fff7ed;          /* 柔和背景 */
+    --card: #ffffff;        /* 卡片底色 */
+    --text: #111827;        /* 主文本 */
+    --muted:#6b7280;        /* 次文本 */
+    --brand:#dc2626;        /* 品牌红 */
+    --ok:#16a34a;           /* 绿色 */
+    --warn:#f59e0b;         /* 橙色 */
+    --info:#2563eb;         /* 蓝色 */
+    --shadow: 0 6px 18px rgba(17,24,39,0.08);
+    --radius: 14px;
+    --gap: 10px;
+  }
+
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{
+    background: linear-gradient(135deg,#fff5f5 0%, var(--bg) 100%);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+    color: var(--text);
+    overflow: hidden; /* 主界面不滚动 */
+  }
+
+  /* 整体采用单屏网格布局，保证手机一屏展示 */
+  .container{
+    height: 100vh;
+    max-width: 420px;
+    margin: 0 auto;
+    padding: 10px;
+    display: grid;
+    grid-template-rows: auto auto 1fr auto;
+    gap: var(--gap);
+  }
+
+  .topbar{
+    background: var(--card);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 10px 12px;
+    display:flex; align-items:center; justify-content:space-between;
+  }
+  .title{display:flex; align-items:center; gap:8px; font-weight:800; color:var(--brand)}
+  .title .emoji{font-size:20px}
+  .top-actions{display:flex; gap:8px}
+  .btn{
+    border:0; border-radius:10px; padding:8px 10px; font-weight:700; cursor:pointer;
+    background:#f3f4f6; color:#111827;
+  }
+  .btn:disabled{opacity:.5; cursor:not-allowed}
+  .btn.primary{background: var(--info); color:white}
+  .btn.danger{background:#ef4444; color:white}
+  .btn.ghost{background:#f3f4f6}
+  .btn.warn{background: var(--warn); color:#111827}
+
+  /* 牌面区：两行，每行一队：左牌右按钮 */
+  .board{
+    background: var(--card);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 10px;
+    display: grid;
+    grid-template-rows: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .row{
+    display:grid;
+    grid-template-columns: 1fr 44%;
+    gap: 10px;
+    align-items: center;
+  }
+
+  .card{
+    position:relative;
+    background: white;
+    border: 3px solid #e5e7eb;
+    border-radius: 14px;
+    padding: 10px;
+    display:flex; align-items:center; justify-content:space-between;
+    min-height: 84px;
+  }
+  .card.a{border-color:#dbeafe} /* A队蓝边 */
+  .card.b{border-color:#fee2e2} /* B队红边 */
+
+  .left{
+    display:flex; align-items:center; gap:8px;
+  }
+  .badge{
+    font-size:12px; font-weight:800; padding:2px 6px; border-radius:999px; background:#f3f4f6; color:#374151;
+  }
+  .dealer{background: #fde68a; color:#92400e;}
+  .level{
+    font-size:28px; font-weight:900; line-height:1;
+  }
+  .suit{font-size:18px; opacity:.8}
+  .meta{
+    display:flex; flex-direction:column; gap:2px; font-size:12px; color:var(--muted);
+  }
+  .meta .fails{font-weight:700; color:#ef4444}
+
+  .crown{
+    position:absolute; top:-12px; left:50%; transform:translateX(-50%);
+    font-size:20px; display:none;
+  }
+  .card.dealing .crown{display:block}
+
+  /* 右侧按钮栈 */
+  .btns{
+    display:grid; gap:8px;
+  }
+  .winbtn{
+    width:100%; padding:12px; border:0; border-radius:12px; font-weight:900; cursor:pointer;
+    background:#111827; color:white; box-shadow: var(--shadow);
+  }
+  .winbtn.green{background: var(--ok)}
+  .winbtn.orange{background: var(--warn)}
+  .winbtn.red{background: #ef4444}
+  .winbtn:disabled{opacity:.5; cursor:not-allowed}
+
+  /* 底部工具条（撤回 + 状态） */
+  .toolbar{
+    display:flex; gap:8px; align-items:center; justify-content:space-between;
+  }
+  .undo{
+    flex: 1;
+    background: #111827; color:white; font-weight:900; padding:12px; border-radius:12px; border:0; box-shadow:var(--shadow);
+  }
+  .status{
+    background: var(--card); border-radius:12px; padding:8px 10px; box-shadow:var(--shadow);
+    font-size:12px; color:var(--muted);
+  }
+
+  /* 获胜横幅（终局） */
+  .winner{
+    position: fixed; inset: 0; background: rgba(0,0,0,.55);
+    display:none; align-items:center; justify-content:center; padding: 16px;
+  }
+  .winner .sheet{
+    width: 100%; max-width: 420px; background:linear-gradient(135deg, #fbbf24 0%, #f97316 100%);
+    border-radius: 16px; color:white; text-align:center; padding: 24px; box-shadow:var(--shadow);
+  }
+  .winner h2{margin:0 0 6px 0; font-size:28px}
+  .winner p{margin:0 0 14px 0}
+  .winner .close{background:white; color:#111827; border:0; border-radius:10px; padding:10px 14px; font-weight:800}
+
+  /* 历史记录弹层（不占主屏高度） */
+  .overlay{position:fixed; inset:0; background:rgba(0,0,0,.5); display:none; align-items:flex-end}
+  .overlay .panel{
+    width:100%; max-width:420px; margin:0 auto; background:var(--card); border-radius:16px 16px 0 0;
+    padding:12px; box-shadow:var(--shadow); max-height:70vh; overflow:auto;
+  }
+  .overlay header{display:flex; justify-content:space-between; align-items:center; margin-bottom:6px}
+  .history-list{list-style:none; margin:0; padding:0; display:grid; gap:8px}
+  .history-item{
+    background:#f9fafb; border-radius:12px; padding:10px; display:flex; justify-content:space-between; align-items:center;
+  }
+  .tag{font-size:12px; padding:2px 6px; border-radius:999px; background:#eef2ff; color:#3730a3; margin-left:6px}
+  .note{font-size:12px; color:#6b7280}
+
+  /* 辅助：小屏进一步压缩 */
+  @media (max-width:360px){
+    .level{font-size:24px}
+    .winbtn{padding:10px}
+    .undo{padding:10px}
+  }
+</style>
+</head>
+<body>
+  <div class="container">
+    <!-- 顶部栏 -->
+    <div class="topbar">
+      <div class="title"><span class="emoji">🎴</span>掼蛋记分器</div>
+      <div class="top-actions">
+        <button class="btn ghost" id="btnHistory">历史</button>
+        <button class="btn danger" id="btnReset">重置</button>
+      </div>
+    </div>
+
+    <!-- 牌面 + 操作 -->
+    <div class="board" id="board">
+      <!-- A队 -->
+      <div class="row">
+        <div class="card a" id="cardA">
+          <div class="crown">👑</div>
+          <div class="left">
+            <div class="level" id="lvA">2</div>
+            <div class="suit">♥</div>
+          </div>
+          <div class="meta">
+            <span id="infoA">距A还差 12 级</span>
+            <span class="fails" id="failA">A1失败：0/3</span>
+          </div>
+          <span class="badge">A队</span>
+        </div>
+        <div class="btns">
+          <button class="winbtn green"  id="btnA12">A队 · 一二（+3）</button>
+          <button class="winbtn orange" id="btnA13">A队 · 一三（+2）</button>
+          <button class="winbtn red"    id="btnA14">A队 · 一四（+1）</button>
+        </div>
+      </div>
+      <!-- B队 -->
+      <div class="row">
+        <div class="card b" id="cardB">
+          <div class="crown">👑</div>
+          <div class="left">
+            <div class="level" id="lvB">2</div>
+            <div class="suit">♠</div>
+          </div>
+          <div class="meta">
+            <span id="infoB">距A还差 12 级</span>
+            <span class="fails" id="failB">A1失败：0/3</span>
+          </div>
+          <span class="badge">B队</span>
+        </div>
+        <div class="btns">
+          <button class="winbtn green"  id="btnB12">B队 · 一二（+3）</button>
+          <button class="winbtn orange" id="btnB13">B队 · 一三（+2）</button>
+          <button class="winbtn red"    id="btnB14">B队 · 一四（+1）</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 底部工具条 -->
+    <div class="toolbar">
+      <button class="undo" id="btnUndo" disabled>撤回上一步</button>
+      <div class="status">
+        <div id="dealerText">当前庄家：暂无</div>
+      </div>
+    </div>
+
+    <!-- 终局横幅 -->
+    <div class="winner" id="winner">
+      <div class="sheet">
+        <h2 id="winnerText">某队获胜！</h2>
+        <p>本局结束，可在上方“撤回上一步”修正误操作。</p>
+        <button class="close" id="closeWinner">继续查看</button>
+      </div>
+    </div>
+
+    <!-- 历史记录弹层 -->
+    <div class="overlay" id="historyOverlay">
+      <div class="panel">
+        <header>
+          <strong>对局历史</strong>
+          <div>
+            <button class="btn ghost" id="btnExport">导出JSON</button>
+            <button class="btn" id="btnCloseHistory">关闭</button>
+          </div>
+        </header>
+        <ul class="history-list" id="historyList"></ul>
+      </div>
+    </div>
+  </div>
+
+<script>
+/* ===================== 基本常量 ===================== */
+const LEVELS = ['2','3','4','5','6','7','8','9','10','J','Q','K','A'];
+const MAX_INDEX = 12; // 'A'
+const STORAGE_KEY = 'guandan-state-v2';
+const APPLY_WINNER_DELTA_EVEN_IF_OPP_AT_A = true; // 若希望到A后只判庄家，不再涨级，改为 false
+
+/* ===================== 状态及持久化 ===================== */
+function freshState(){
+  return {
+    aLevel: 0, // index in LEVELS
+    bLevel: 0,
+    dealer: null, // 'A' | 'B' | null
+    a1Fails: { A:0, B:0 }, // 仅在“庄家在A且输”时累计；到3回2并清零
+    history: [],           // [{winner:'A'|'B', delta:1|2|3, pattern:'一四'等, notes:[], ts:number}]
+    gameOver: false
+  };
+}
+let state = freshState();
+
+function save(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+function load(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(!raw) return;
+    const obj = JSON.parse(raw);
+    // 兼容校验
+    if(!obj || typeof obj !== 'object') return;
+    state = Object.assign(freshState(), obj);
+    // 修复可能缺失的字段
+    if(!state.a1Fails) state.a1Fails = {A:0,B:0};
+    if(!Array.isArray(state.history)) state.history = [];
+  }catch(e){ console.warn('读取存档失败，使用初始状态', e); }
+}
+load();
+
+/* ===================== 工具函数 ===================== */
+const el = id => document.getElementById(id);
+function teamLevel(team){ return team==='A' ? state.aLevel : state.bLevel; }
+function setTeamLevel(team, idx){ if(team==='A') state.aLevel = idx; else state.bLevel = idx; }
+function clampA(idx){ return Math.min(MAX_INDEX, Math.max(0, idx)); }
+function isDealerAtA(){ return state.dealer && teamLevel(state.dealer) === MAX_INDEX; }
+
+/* 将一手对局应用到当前状态（核心规则） */
+function applyRoundCore(winner, delta, pattern, collectNotes=true){
+  const entry = { winner, delta, pattern, notes: [], ts: Date.now() };
+  const loser = (winner === 'A' ? 'B' : 'A');
+
+  let skipWinnerDeltaThisRound = false; // 某些情形（第3次A不过回2）需要跳过本手给赢家加级
+
+  // ——A 阶段特殊判定：仅当“庄家在A”时介入（保持你原有结构不变）——
+  if (isDealerAtA()) {
+    if (state.dealer === winner) {
+      // 庄家在A且赢
+      if (delta >= 2) {
+        // 一二 / 一三 才算“过A” -> 终局（与你原逻辑一致，但收紧条件）
+        entry.notes.push('庄家在A且赢（过A）：整局结束');
+        state.gameOver = true;
+        state.history.push(entry);
+        state.dealer = winner; // 记账一致
+        return;
+      } else {
+        // delta===1 -> 一四：赢但未过A，记A不过（A1失败）+1，继续打A
+        state.a1Fails[state.dealer] = (state.a1Fails[state.dealer] || 0) + 1;
+        entry.notes.push(`${state.dealer} 在A赢“一四”未过：A1失败（${state.a1Fails[state.dealer]}/3）`);
+        if (state.a1Fails[state.dealer] >= 3) {
+          // 第3次作为庄家打A不过 -> 回到2，并清零计数
+          setTeamLevel(state.dealer, 0);
+          entry.notes.push(`${state.dealer} 第3次A1失败：回到2`);
+          state.a1Fails[state.dealer] = 0;
+          // 若本手赢家正是该庄家，为保持“回到2”的落点，本手不再给其加级
+          skipWinnerDeltaThisRound = true;
+        }
+      }
+    } else {
+      // 庄家在A且输 -> 记A不过（A1失败）+1，达到3次回到2（保持你原逻辑）
+      state.a1Fails[state.dealer] = (state.a1Fails[state.dealer] || 0) + 1;
+      entry.notes.push(`${state.dealer} 在A失利：A1失败（${state.a1Fails[state.dealer]}/3）`);
+      if (state.a1Fails[state.dealer] >= 3) {
+        setTeamLevel(state.dealer, 0);
+        entry.notes.push(`${state.dealer} 第3次A1失败：回到2`);
+        state.a1Fails[state.dealer] = 0;
+      }
+    }
+  }
+
+  // ——常规加级：只给赢家涨级（封顶A）。是否在A阶段仍加级由你原来的开关控制——
+  const winnerAtA = (teamLevel(winner) === MAX_INDEX);
+  const loserAtA  = (teamLevel(loser)  === MAX_INDEX);
+  const shouldApply =
+    APPLY_WINNER_DELTA_EVEN_IF_OPP_AT_A ? true : (!winnerAtA && !loserAtA);
+
+  if (!skipWinnerDeltaThisRound && shouldApply) {
+    const newIdx = clampA(teamLevel(winner) + delta);
+    setTeamLevel(winner, newIdx);
+  }
+
+  // 庄家更新为本手赢家（保持原规则：上一把赢的坐庄）
+  state.dealer = winner;
+
+  // 记录历史
+  state.history.push(entry);
+}
+
+/* 撤回：回放历史重算 */
+function recomputeFromHistory(){
+  const snapshot = state.history.map(x => ({winner:x.winner, delta:x.delta, pattern:x.pattern}));
+  state = freshState();
+  for(const h of snapshot){
+    applyRoundCore(h.winner, h.delta, h.pattern);
+    if(state.gameOver) break; // 若某一步就终局，后面本不应存在，但稳妥处理
+  }
+}
+
+/* ===================== 事件处理 ===================== */
+function record(winner, delta, pattern){
+  if(state.gameOver) return;
+  applyRoundCore(winner, delta, pattern);
+  save();
+  updateUI();
+}
+function undo(){
+  if(state.history.length === 0) return;
+  state.history.pop();
+  recomputeFromHistory();
+  save();
+  updateUI();
+}
+function resetAll(){
+  if(!confirm('确定要重置本局所有数据吗？（本地存档也会清空）')) return;
+  state = freshState();
+  save();
+  updateUI();
+}
+
+/* ===================== UI 渲染 ===================== */
+function updateUI(){
+  // 牌值
+  el('lvA').textContent = LEVELS[state.aLevel];
+  el('lvB').textContent = LEVELS[state.bLevel];
+  // 提示
+  el('infoA').textContent = (state.aLevel===MAX_INDEX) ? '已在 A' : `距A还差 ${MAX_INDEX - state.aLevel} 级`;
+  el('infoB').textContent = (state.bLevel===MAX_INDEX) ? '已在 A' : `距A还差 ${MAX_INDEX - state.bLevel} 级`;
+  el('failA').textContent = `A1失败：${state.a1Fails.A||0}/3`;
+  el('failB').textContent = `A1失败：${state.a1Fails.B||0}/3`;
+
+  // 庄家标识
+  el('dealerText').textContent = '当前庄家：' + (state.dealer ? (state.dealer+'队') : '暂无');
+  el('cardA').classList.toggle('dealing', state.dealer==='A');
+  el('cardB').classList.toggle('dealing', state.dealer==='B');
+
+  // 按钮可用性
+  const disabled = state.gameOver;
+  ['btnA12','btnA13','btnA14','btnB12','btnB13','btnB14'].forEach(id=>{
+    el(id).disabled = disabled;
+  });
+  // 撤回是否可用
+  el('btnUndo').disabled = state.history.length===0;
+
+  // 终局横幅
+  const winnerLayer = el('winner');
+  if(state.gameOver){
+    const text = (state.dealer ? `${state.dealer}队 胜！` : '终局');
+    el('winnerText').textContent = text;
+    winnerLayer.style.display = 'flex';
+  }else{
+    winnerLayer.style.display = 'none';
+  }
+
+  // 历史列表（弹层里）
+  const list = el('historyList');
+  list.innerHTML = '';
+  state.history.forEach((h, i)=>{
+    const li = document.createElement('li');
+    li.className = 'history-item';
+    const left = document.createElement('div');
+    left.innerHTML = `<strong>#${i+1}</strong> <span class="tag">${h.winner}队 ${h.pattern} +${h.delta}</span>`;
+    const right = document.createElement('div');
+    right.className = 'note';
+    right.textContent = (h.notes && h.notes.length) ? h.notes.join('；') : '';
+    li.appendChild(left); li.appendChild(right);
+    list.appendChild(li);
+  });
+}
+
+/* ===================== 绑定事件 ===================== */
+el('btnA12').addEventListener('click',()=>record('A',3,'一二'));
+el('btnA13').addEventListener('click',()=>record('A',2,'一三'));
+el('btnA14').addEventListener('click',()=>record('A',1,'一四'));
+
+el('btnB12').addEventListener('click',()=>record('B',3,'一二'));
+el('btnB13').addEventListener('click',()=>record('B',2,'一三'));
+el('btnB14').addEventListener('click',()=>record('B',1,'一四'));
+
+el('btnUndo').addEventListener('click', undo);
+el('btnReset').addEventListener('click', resetAll);
+
+el('btnHistory').addEventListener('click', ()=>{ el('historyOverlay').style.display='flex'; });
+el('btnCloseHistory').addEventListener('click', ()=>{ el('historyOverlay').style.display='none'; });
+el('btnExport').addEventListener('click', ()=>{
+  const data = JSON.stringify(state, null, 2);
+  // 简易下载
+  const blob = new Blob([data], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `guandan-${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+el('closeWinner').addEventListener('click', ()=>{ el('winner').style.display='none'; });
+
+/* ===================== 首次渲染 ===================== */
+updateUI();
+</script>
+</body>
+</html>
