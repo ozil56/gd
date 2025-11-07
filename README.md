@@ -4,8 +4,8 @@
 
 ## 部署说明
 
-1. php环境，并打开
-extension=sqlite3
+1. php环境，并打开  
+extension=sqlite3  
 extension=pdo_sqlite
 
 3. 默认文档设置为 `index.html`
