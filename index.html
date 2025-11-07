@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>掼蛋记分器 · 介绍页</title>
+<style>
+  :root{
+    --bg: #fff7ed;
+    --card: #ffffff;
+    --text: #111827;
+    --muted:#6b7280;
+    --brand:#dc2626;
+    --info:#2563eb;
+    --shadow: 0 6px 18px rgba(17,24,39,0.08);
+    --radius: 14px;
+    --gap: 10px;
+  }
+
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{
+    background: linear-gradient(135deg,#fff5f5 0%, var(--bg) 100%);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+    color: var(--text);
+    overflow: hidden;
+  }
+
+  .container{
+    height: 100vh;
+    max-width: 420px;
+    margin: 0 auto;
+    padding: 10px;
+    display: grid;
+    grid-template-rows: auto 1fr;
+    gap: var(--gap);
+  }
+
+  .topbar{
+    background: var(--card);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 14px 18px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+  }
+
+  .title{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    font-weight:800;
+    color:var(--brand);
+    font-size:18px;
+  }
+
+  .title .emoji{
+    font-size:22px;
+  }
+
+  .landing-content{
+    display:flex;
+    flex-direction:column;
+    gap:var(--gap);
+    overflow-y:auto;
+    padding-bottom:10px;
+  }
+
+  .card{
+    background: var(--card);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 24px 20px;
+  }
+
+  .hero{
+    text-align:center;
+  }
+
+  .hero p{
+    margin:12px 0 20px;
+    color:var(--muted);
+    font-size:14px;
+    line-height:1.5;
+  }
+
+  .cta-btn{
+    border:0;
+    border-radius:14px;
+    padding:16px 24px;
+    font-size:18px;
+    font-weight:800;
+    width:100%;
+    cursor:pointer;
+    background:var(--info);
+    color:#fff;
+    box-shadow:0 12px 25px rgba(37,99,235,0.25);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+  }
+
+  .cta-btn:active{
+    transform: scale(0.98);
+    box-shadow:0 6px 18px rgba(37,99,235,0.2);
+  }
+
+  .guide h2{
+    margin:0 0 12px;
+    font-size:16px;
+  }
+
+  .guide ol{
+    margin:0;
+    padding-left:20px;
+    color:var(--muted);
+    line-height:1.6;
+    font-size:14px;
+  }
+
+  .guide li + li{
+    margin-top:6px;
+  }
+</style>
+</head>
+<body>
+  <div class="container">
+    <div class="topbar">
+      <div class="title">
+        <span class="emoji">🎴</span>
+        掼蛋记分器
+      </div>
+    </div>
+
+    <div class="landing-content">
+      <div class="card hero">
+        <p>随时记录每局掼蛋比分，支持多人同时查看与更新。</p>
+        <button class="cta-btn" id="btnCreate">创建新牌局</button>
+      </div>
+
+      <div class="card guide">
+        <h2>使用说明</h2>
+        <ol>
+          <li>用户可复制链接，将当前牌局的链接发给牌友。</li>
+          <li>所有当前牌局页面均可自动同步。</li>
+          <li>可自定义队名。</li>
+          <li>可查看当前牌局输赢历史，并支持撤回。</li>
+          <li>牌局数据保存1年。</li>
+        </ol>
+      </div>
+    </div>
+  </div>
+
+<script>
+document.getElementById('btnCreate').addEventListener('click', function(){
+  window.location.href = 'games.html';
+});
+</script>
+</body>
+</html>

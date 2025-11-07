@@ -1,0 +1,1151 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>掼蛋记分器 · 精简版</title>
+<style>
+  :root{
+    --bg: #fff7ed;          /* 柔和背景 */
+    --card: #ffffff;        /* 卡片底色 */
+    --text: #111827;        /* 主文本 */
+    --muted:#6b7280;        /* 次文本 */
+    --brand:#dc2626;        /* 品牌红 */
+    --ok:#16a34a;           /* 绿色 */
+    --warn:#f59e0b;         /* 橙色 */
+    --info:#2563eb;         /* 蓝色 */
+    --shadow: 0 6px 18px rgba(17,24,39,0.08);
+    --radius: 14px;
+    --gap: 10px;
+  }
+
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{
+    background: linear-gradient(135deg,#fff5f5 0%, var(--bg) 100%);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+    color: var(--text);
+    overflow: hidden; /* 主界面不滚动 */
+  }
+
+  /* 整体采用单屏网格布局，保证手机一屏展示 */
+  .container{
+    height: 100vh;
+    max-width: 420px;
+    margin: 0 auto;
+    padding: 10px;
+    display: grid;
+    grid-template-rows: auto auto 1fr auto;
+    gap: var(--gap);
+  }
+
+  .topbar{
+    background: var(--card);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 10px 12px;
+    display:flex; align-items:flex-start; gap:12px;
+    flex-wrap:wrap;
+  }
+  .title{display:flex; align-items:center; gap:8px; font-weight:800; color:var(--brand)}
+  .title .emoji{font-size:20px}
+  .session-info{
+    display:flex;
+    flex-direction:column;
+    gap:2px;
+    font-size:12px;
+    color:var(--muted);
+    min-width:160px;
+  }
+  .session-info .game-id{font-weight:600; color:var(--text);}
+  .session-info .status{padding:0; box-shadow:none; background:transparent;}
+  .session-info .status[data-tone="error"]{color:var(--brand);}
+  .session-info .status[data-tone="warn"]{color:var(--warn);}
+  .session-info .status[data-tone="ok"]{color:var(--ok);}
+  .session-info .status[data-tone="sync"]{color:var(--info);}
+  .top-actions{display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end;}
+  .btn{
+    border:0; border-radius:10px; padding:8px 10px; font-weight:700; cursor:pointer;
+    background:#f3f4f6; color:#111827;
+  }
+  .btn:disabled{opacity:.5; cursor:not-allowed}
+  .btn.primary{background: var(--info); color:white}
+  .btn.danger{background:#ef4444; color:white}
+  .btn.ghost{background:#f3f4f6}
+  .btn.warn{background: var(--warn); color:#111827}
+
+  /* 牌面区：两行，每行一队：左牌右按钮 */
+  .board{
+    background: var(--card);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 10px;
+    display: grid;
+    grid-template-rows: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .row{
+    display:grid;
+    grid-template-columns: minmax(0, 80%) minmax(0, 20%);
+    gap: 10px;
+    align-items: center;
+  }
+
+  .card{
+    position:relative;
+    background: white;
+    border: 3px solid #e5e7eb;
+    border-radius: 14px;
+    padding: 10px;
+    display:flex; align-items:center; justify-content:space-between;
+    min-height: 84px;
+  }
+  .card.a{border-color:#dbeafe} /* A队蓝边 */
+  .card.b{border-color:#fee2e2} /* B队红边 */
+
+  .left{
+    display:flex; align-items:center; gap:8px;
+  }
+  .badge{
+    font-size:12px; font-weight:800; padding:2px 6px; border-radius:999px; background:#f3f4f6; color:#374151;
+  }
+  .badge.team-name-btn{
+    border:none;
+    background:#f3f4f6;
+    cursor:pointer;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    font-size:12px;
+    padding:6px 5px;
+    min-width:60px;
+    line-height:1.2;
+    white-space:nowrap;
+  }
+  .badge.team-name-btn:focus{
+    outline:2px solid rgba(37,99,235,0.4);
+    outline-offset:1px;
+  }
+  .badge.team-name-btn:hover{
+    background:#e2e8f0;
+  }
+  .badge.team-name-btn:disabled{
+    cursor:not-allowed;
+    opacity:0.6;
+  }
+  .dealer{background: #fde68a; color:#92400e;}
+  .level{
+    font-size:28px; font-weight:900; line-height:1;
+  }
+  .suit{font-size:18px; opacity:.8}
+  .meta{
+    display:flex; flex-direction:column; gap:2px; font-size:12px; color:var(--muted);
+  }
+  .meta .fails{font-weight:700; color:#ef4444}
+
+  .crown{
+    position:absolute; top:-12px; left:50%; transform:translateX(-50%);
+    font-size:20px; display:none;
+  }
+  .card.dealing .crown{display:block}
+
+  /* 右侧按钮栈 */
+  .btns{
+    display:grid; gap:8px;
+  }
+  .winbtn{
+    width:100%; padding:12px 5px; border:0; border-radius:12px; font-weight:900; cursor:pointer;
+    background:#111827; color:white; box-shadow: var(--shadow);
+  }
+  .winbtn.green{background: var(--ok)}
+  .winbtn.orange{background: var(--warn)}
+  .winbtn.red{background: #ef4444}
+  .winbtn:disabled{opacity:.5; cursor:not-allowed}
+
+  /* 底部工具条（撤回 + 状态） */
+  .toolbar{
+    display:flex; gap:8px; align-items:center; justify-content:space-between;
+  }
+  .undo{
+    flex: 1;
+    background: #111827; color:white; font-weight:900; padding:12px; border-radius:12px; border:0; box-shadow:var(--shadow);
+  }
+  .status{
+    background: var(--card); border-radius:12px; padding:8px 10px; box-shadow:var(--shadow);
+    font-size:12px; color:var(--muted);
+  }
+
+  /* 获胜横幅（终局） */
+  .winner{
+    position: fixed; inset: 0; background: rgba(0,0,0,.55);
+    display:none; align-items:center; justify-content:center; padding: 16px;
+  }
+  .winner .sheet{
+    width: 100%; max-width: 420px; background:linear-gradient(135deg, #fbbf24 0%, #f97316 100%);
+    border-radius: 16px; color:white; text-align:center; padding: 24px; box-shadow:var(--shadow);
+  }
+  .winner h2{margin:0 0 6px 0; font-size:28px}
+  .winner p{margin:0 0 14px 0}
+  .winner .close{background:white; color:#111827; border:0; border-radius:10px; padding:10px 14px; font-weight:800}
+
+  /* 历史记录弹层（不占主屏高度） */
+  .overlay{position:fixed; inset:0; background:rgba(0,0,0,.5); display:none; align-items:flex-end}
+  .overlay .panel{
+    width:100%; max-width:420px; margin:0 auto; background:var(--card); border-radius:16px 16px 0 0;
+    padding:12px; box-shadow:var(--shadow); max-height:70vh; overflow:auto;
+  }
+  .overlay header{display:flex; justify-content:space-between; align-items:center; margin-bottom:6px}
+  .history-list{list-style:none; margin:0; padding:0; display:grid; gap:8px}
+  .history-item{
+    background:#f9fafb; border-radius:12px; padding:10px; display:flex; justify-content:space-between; align-items:center;
+  }
+  .tag{font-size:12px; padding:2px 6px; border-radius:999px; background:#eef2ff; color:#3730a3; margin-left:6px}
+  .note{font-size:12px; color:#6b7280}
+
+  /* 队名编辑弹层 */
+  .modal-overlay{
+    position:fixed; inset:0; background:rgba(0,0,0,.55); display:none;
+    align-items:center; justify-content:center; padding:16px;
+  }
+  .modal-card{
+    width:100%; max-width:360px; margin:0 auto; background:var(--card);
+    border-radius:16px; padding:18px; box-shadow:var(--shadow);
+    display:flex; flex-direction:column; gap:14px;
+  }
+  .modal-card h3{margin:0; font-size:18px;}
+  .modal-card input{
+    width:100%; border:2px solid #e5e7eb; border-radius:10px;
+    padding:10px; font-size:16px; font-weight:600;
+  }
+  .modal-card input:focus{
+    outline:none; border-color:#2563eb; box-shadow:0 0 0 3px rgba(37,99,235,0.15);
+  }
+  .modal-actions{display:flex; gap:10px; justify-content:flex-end;}
+  .modal-actions .btn{flex:1;}
+
+  /* 辅助：小屏进一步压缩 */
+  @media (max-width:360px){
+    .level{font-size:24px}
+    .winbtn{padding:10px}
+    .undo{padding:10px}
+  }
+</style>
+</head>
+<body>
+  <div class="container">
+    <!-- 顶部栏 -->
+    <div class="topbar">
+	  <div class="title"><a href="index.html" class="title" style="text-decoration:none;"><span class="emoji">🎴</span>掼蛋记分器</a></div>
+	  
+      <div class="session-info">
+        <div class="game-id">牌局ID：<span id="gameIdDisplay">加载中…</span></div>
+        <div class="status" id="syncStatus" data-tone="sync">同步中…</div>
+      </div>
+      <div class="top-actions">
+        <button class="btn ghost" id="btnCopyLink">复制链接</button>
+        <button class="btn warn" id="btnNewGame">新牌局</button>
+        <button class="btn ghost" id="btnHistory">历史</button>
+        <button class="btn danger" id="btnReset">重置</button>
+      </div>
+    </div>
+
+    <!-- 牌面 + 操作 -->
+    <div class="board" id="board">
+      <!-- A队 -->
+      <div class="row">
+        <div class="card a" id="cardA">
+          <div class="crown">👑</div>
+          <div class="left">
+            <div class="level" id="lvA">2</div>
+            <div class="suit">♥</div>
+          </div>
+          <div class="meta">
+            <span id="infoA">距A还差 12 级</span>
+            <span class="fails" id="failA">A1失败：0/3</span>
+          </div>
+          <button type="button" class="badge team-name-btn" id="teamNameA" data-team="A">A队</button>
+        </div>
+        <div class="btns">
+          <button class="winbtn green"  id="btnA12">双上 +3</button>
+          <button class="winbtn orange" id="btnA13">一三 +2</button>
+          <button class="winbtn red"    id="btnA14">一四 +1</button>
+        </div>
+      </div>
+      <!-- B队 -->
+      <div class="row">
+        <div class="card b" id="cardB">
+          <div class="crown">👑</div>
+          <div class="left">
+            <div class="level" id="lvB">2</div>
+            <div class="suit">♠</div>
+          </div>
+          <div class="meta">
+            <span id="infoB">距A还差 12 级</span>
+            <span class="fails" id="failB">A1失败：0/3</span>
+          </div>
+          <button type="button" class="badge team-name-btn" id="teamNameB" data-team="B">B队</button>
+        </div>
+        <div class="btns">
+          <button class="winbtn green"  id="btnB12">双上 +3</button>
+          <button class="winbtn orange" id="btnB13">一三 +2</button>
+          <button class="winbtn red"    id="btnB14">一四 +1</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 底部工具条 -->
+    <div class="toolbar">
+      <button class="undo" id="btnUndo" disabled>撤回上一步</button>
+      <div class="status">
+        <div id="dealerText">当前庄家：暂无</div>
+      </div>
+    </div>
+
+    <!-- 终局横幅 -->
+    <div class="winner" id="winner">
+      <div class="sheet">
+        <h2 id="winnerText">某队获胜！</h2>
+        <p>本局结束，可在下方“撤回上一步”修正误操作。</p>
+        <button class="close" id="closeWinner">继续查看</button>
+      </div>
+    </div>
+
+    <!-- 历史记录弹层 -->
+    <div class="overlay" id="historyOverlay">
+      <div class="panel">
+        <header>
+          <strong>对局历史</strong>
+          <div>
+            <button class="btn ghost" id="btnExport">导出JSON</button>
+            <button class="btn" id="btnCloseHistory">关闭</button>
+          </div>
+        </header>
+        <ul class="history-list" id="historyList"></ul>
+      </div>
+    </div>
+
+    <!-- 队名编辑弹层 -->
+    <div class="modal-overlay" id="renameOverlay">
+      <div class="modal-card">
+        <h3 id="renameTitle">请输入队伍的新名称</h3>
+        <input id="renameInput" type="text" maxlength="8" placeholder="例如：先锋队" />
+        <div class="modal-actions">
+          <button class="btn ghost" type="button" id="renameCancel">取消</button>
+          <button class="btn primary" type="button" id="renameConfirm">确定</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+/* ===================== 基本常量 ===================== */
+const LEVELS = ['2','3','4','5','6','7','8','9','10','J','Q','K','A'];
+const MAX_INDEX = 12; // 'A'
+const APPLY_WINNER_DELTA_EVEN_IF_OPP_AT_A = true;
+
+const TEAM_DEFAULTS = { A: 'A队', B: 'B队' };
+let renameTarget = null;
+
+function sanitizeTeamName(value, fallback = ''){
+  if(typeof value !== 'string') return fallback;
+  const trimmed = value.trim();
+  if(!trimmed) return fallback;
+  return trimmed.slice(0, 12);
+}
+
+function mergeTeams(teams){
+  const merged = Object.assign({}, TEAM_DEFAULTS);
+  if(teams && typeof teams === 'object'){
+    if(Object.prototype.hasOwnProperty.call(teams, 'A')){
+      merged.A = sanitizeTeamName(teams.A, merged.A);
+    }
+    if(Object.prototype.hasOwnProperty.call(teams, 'B')){
+      merged.B = sanitizeTeamName(teams.B, merged.B);
+    }
+  }
+  return merged;
+}
+
+const TEAM_ACTIONS = {
+  A: [
+    { id: 'btnA12', delta: 3, label: '双上' },
+    { id: 'btnA13', delta: 2, label: '一三' },
+    { id: 'btnA14', delta: 1, label: '一四' }
+  ],
+  B: [
+    { id: 'btnB12', delta: 3, label: '双上' },
+    { id: 'btnB13', delta: 2, label: '一三' },
+    { id: 'btnB14', delta: 1, label: '一四' }
+  ]
+};
+
+function getTeamName(code){
+  const teams = (state && state.teams) ? state.teams : TEAM_DEFAULTS;
+  if(!code) return '';
+  const key = String(code).toUpperCase();
+  return teams[key] || TEAM_DEFAULTS[key] || key;
+}
+
+function promptTeamName(team){
+  if(!isReady) return;
+  const overlay = el('renameOverlay');
+  const input = el('renameInput');
+  const title = el('renameTitle');
+  if(!overlay || !input || !title) return;
+  renameTarget = String(team).toUpperCase();
+  const current = getTeamName(renameTarget);
+  title.textContent = `请输入${current}的新名称`;
+  input.value = current;
+  overlay.style.display = 'flex';
+  requestAnimationFrame(()=>{
+    input.focus();
+    input.select();
+  });
+}
+
+function closeRenameModal(){
+  const overlay = el('renameOverlay');
+  const input = el('renameInput');
+  if(overlay) overlay.style.display = 'none';
+  if(input){
+    input.blur();
+    input.value = '';
+  }
+  renameTarget = null;
+}
+
+function submitRenameModal(){
+  if(!renameTarget){
+    closeRenameModal();
+    return;
+  }
+  const input = el('renameInput');
+  if(!input){
+    closeRenameModal();
+    return;
+  }
+  const current = getTeamName(renameTarget);
+  const fallback = TEAM_DEFAULTS[renameTarget] || current;
+  const normalized = sanitizeTeamName(input.value, fallback);
+  if(normalized && normalized !== current){
+    state.teams = mergeTeams(Object.assign({}, state.teams || {}, { [renameTarget]: normalized }));
+    state.meta = state.meta || {};
+    state.meta.updatedAt = new Date().toISOString();
+    updateUI();
+    persistState();
+  }
+  closeRenameModal();
+}
+
+
+ // 若希望到A后只判庄家，不再涨级，改为 false
+function resolveApiBase(){
+  if(window.GUANDAN_API_BASE){
+    return window.GUANDAN_API_BASE;
+  }
+  const meta = document.querySelector('meta[name="guandan-api-base"]');
+  if(meta && meta.content){
+    return meta.content;
+  }
+  let origin = window.location.origin || '';
+  if(origin === 'null'){
+    origin = '';
+  }
+  let path = window.location.pathname || '/';
+  if(!path){
+    path = '/';
+  }
+  const parts = path.split('/');
+  if(!(parts.length && parts[parts.length - 1] === '')){
+    const lastSegment = parts.length ? parts[parts.length - 1] : '';
+    if(lastSegment && lastSegment.indexOf('.') === -1){
+      path = path + '/';
+    }else{
+      parts.pop();
+      path = parts.join('/');
+      if(path === ''){
+        path = '/';
+      }
+    }
+  }
+  if(path.charAt(path.length - 1) !== '/'){
+    path += '/';
+  }
+  return (origin ? origin : '') + path + 'games.php';
+}
+
+const API_BASE = resolveApiBase();
+console.info('[guandan] API endpoint ->', API_BASE);
+
+async function readJsonSafely(res){
+  const text = await res.text();
+  if(!text){
+    return { json: null, text: '', parseError: null };
+  }
+  try{
+    return { json: JSON.parse(text), text, parseError: null };
+  }catch(parseError){
+    return { json: null, text, parseError };
+  }
+}
+
+function extractServerMessage(detail){
+  if(!detail) return '';
+  if(typeof detail === 'string'){
+    return detail;
+  }
+  let message = '';
+  if(detail.error_msg){
+    message = detail.error_msg;
+  }else if(detail.message){
+    message = detail.message;
+  }else if(detail.error){
+    message = detail.error;
+  }else if(detail.debug && detail.debug.description){
+    message = detail.debug.description;
+  }else if(detail.debug && detail.debug.message){
+    message = detail.debug.message;
+  }
+  if(!message && detail.debug && detail.debug.number){
+    message = '错误代码 ' + detail.debug.number;
+  }
+  if(detail.debug && detail.debug.dataPath){
+    const suffix = '数据文件: ' + detail.debug.dataPath;
+    if(message){
+      message += '（' + suffix + '）';
+    }else{
+      message = suffix;
+    }
+  }
+  if(!message && detail.debug && detail.debug.dataPathSource){
+    message = '数据来源: ' + detail.debug.dataPathSource;
+  }
+  return message || '';
+}
+
+function logApiFailure(context, res, payload){
+  try{
+    console.error('[api] ' + context + ' failed', {
+      status: res ? res.status : null,
+      statusText: res ? res.statusText : null,
+      payload: payload ? (payload.json !== null ? payload.json : payload.text) : null,
+      parseError: payload ? payload.parseError : null
+    });
+  }catch(logErr){
+    console.error('[api] ' + context + ' failed', logErr);
+  }
+}
+
+let currentGameId = null;
+let isReady = false;
+let statusClearTimer = null;
+
+/* ===================== 状态及持久化 ===================== */
+function freshState(){
+  const now = new Date().toISOString();
+  return {
+    aLevel: 0, // index in LEVELS
+    bLevel: 0,
+    dealer: null, // 'A' | 'B' | null
+    a1Fails: { A:0, B:0 }, // 仅在“庄家在A且输”时累计；到3回2并清零
+    history: [],           // [{winner:'A'|'B', delta:1|2|3, pattern:'一四'等, notes:[], ts:number}]
+    gameOver: false,
+    teams: mergeTeams(),
+    meta: {
+      id: null,
+      createdAt: now,
+      updatedAt: now
+    }
+  };
+}
+
+function hydrateState(remoteState, id){
+  const base = freshState();
+  const incoming = (remoteState && typeof remoteState === 'object') ? remoteState : {};
+  const merged = Object.assign({}, base, incoming);
+  merged.teams = mergeTeams(merged.teams);
+  merged.a1Fails = Object.assign({}, base.a1Fails, incoming.a1Fails || {});
+  merged.history = Array.isArray(incoming.history) ? incoming.history.map(item => ({...item})) : [];
+  merged.meta = Object.assign({}, base.meta, incoming.meta || {});
+  if(id) merged.meta.id = id;
+  if(!merged.meta.createdAt) merged.meta.createdAt = base.meta.createdAt;
+  if(!merged.meta.updatedAt) merged.meta.updatedAt = merged.meta.createdAt;
+  return merged;
+}
+
+let state = freshState();
+let autoRefreshTimer = null;
+let isAutoSyncing = false;
+let isSaving = false;
+
+/* ===================== 网络与同步 ===================== */
+async function apiFetchGame(id){
+  const res = await fetch(`${API_BASE}?id=${encodeURIComponent(id)}`);
+  const payload = await readJsonSafely(res);
+  if(res.status === 404){
+    const err = new Error('NOT_FOUND');
+    err.code = 'NOT_FOUND';
+    err.status = res.status;
+    err.detail = payload.json !== null ? payload.json : payload.text;
+    logApiFailure('fetchGame (404)', res, payload);
+    throw err;
+  }
+  if(!res.ok){
+    const err = new Error('FETCH_FAILED');
+    err.status = res.status;
+    err.detail = payload.json !== null ? payload.json : payload.text;
+    err.code = (payload.json && payload.json.error) || 'FETCH_FAILED';
+    logApiFailure('fetchGame', res, payload);
+    throw err;
+  }
+  if(payload.parseError){
+    const err = new Error('INVALID_JSON');
+    err.code = 'INVALID_JSON';
+    err.detail = payload.text;
+    err.status = res.status;
+    logApiFailure('fetchGame parse', res, payload);
+    throw err;
+  }
+  return payload.json;
+}
+
+async function apiCreateGame(initialState){
+  const res = await fetch(`${API_BASE}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ state: initialState })
+  });
+  const payload = await readJsonSafely(res);
+  if(!res.ok){
+    const err = new Error('CREATE_FAILED');
+    err.status = res.status;
+    err.detail = payload.json !== null ? payload.json : payload.text;
+    err.code = (payload.json && (payload.json.error || payload.json.error_code)) || 'CREATE_FAILED';
+    logApiFailure('createGame', res, payload);
+    throw err;
+  }
+  if(payload.parseError){
+    const err = new Error('INVALID_JSON');
+    err.code = 'INVALID_JSON';
+    err.detail = payload.text;
+    err.status = res.status;
+    logApiFailure('createGame parse', res, payload);
+    throw err;
+  }
+  return payload.json;
+}
+
+async function apiUpdateGame(id, nextState){
+  const res = await fetch(`${API_BASE}?id=${encodeURIComponent(id)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ state: nextState })
+  });
+  const payload = await readJsonSafely(res);
+  if(!res.ok){
+    const err = new Error('SAVE_FAILED');
+    err.status = res.status;
+    err.detail = payload.json !== null ? payload.json : payload.text;
+    err.code = (payload.json && (payload.json.error || payload.json.error_code)) || 'SAVE_FAILED';
+    logApiFailure('updateGame', res, payload);
+    throw err;
+  }
+  if(payload.parseError){
+    const err = new Error('INVALID_JSON');
+    err.code = 'INVALID_JSON';
+    err.detail = payload.text;
+    err.status = res.status;
+    logApiFailure('updateGame parse', res, payload);
+    throw err;
+  }
+  return payload.json;
+}
+
+function updateUrlWithId(id){
+  if(!id) return;
+  const url = new URL(window.location.href);
+  url.searchParams.set('id', id);
+  window.history.replaceState(null, '', url);
+}
+
+function updateGameIdDisplay(){
+  const display = document.getElementById('gameIdDisplay');
+  if(display){
+    if(currentGameId){
+      display.textContent = currentGameId;
+    }else if(!isReady){
+      display.textContent = '加载中…';
+    }else{
+      display.textContent = '—';
+    }
+  }
+  if(currentGameId){
+    document.title = `掼蛋记分器 · #${currentGameId}`;
+  }else if(isReady){
+    document.title = '掼蛋记分器 · 未编号';
+  }else{
+    document.title = '掼蛋记分器';
+  }
+}
+
+function showStatus(message, tone='info'){
+  const statusEl = document.getElementById('syncStatus');
+  if(!statusEl) return;
+  statusEl.textContent = message || '';
+  if(tone){
+    statusEl.setAttribute('data-tone', tone);
+  }else{
+    statusEl.removeAttribute('data-tone');
+  }
+  if(statusClearTimer){
+    clearTimeout(statusClearTimer);
+    statusClearTimer = null;
+  }
+  if(tone === 'ok'){
+    statusClearTimer = setTimeout(()=>{
+      if(statusEl.getAttribute('data-tone') === 'ok'){
+        statusEl.textContent = '';
+        statusEl.removeAttribute('data-tone');
+      }
+    }, 2000);
+  }
+}
+
+
+async function persistState(){
+  if(!isReady || !currentGameId) return;
+  state.meta = Object.assign({}, state.meta || {}, {
+    id: currentGameId,
+    updatedAt: new Date().toISOString()
+  });
+  let saved = null;
+  isSaving = true;
+  const previousId = currentGameId;
+  try{
+    showStatus('正在同步...', 'sync');
+    saved = await apiUpdateGame(currentGameId, state);
+    if(saved){
+      if(saved.id){
+        currentGameId = saved.id;
+      }
+      if(saved.state){
+        state = hydrateState(saved.state, currentGameId);
+      }
+    }
+    if(currentGameId !== previousId){
+      updateUrlWithId(currentGameId);
+      startAutoRefresh();
+    } else {
+      updateUrlWithId(currentGameId);
+    }
+    showStatus('已同步', 'ok');
+    updateUI();
+  }catch(err){
+    console.error('同步失败', err);
+    if(err && err.detail){
+      console.error('server response detail', err.detail);
+    }
+    const extra = extractServerMessage(err && err.detail);
+    const message = extra ? (`同步失败，请稍后重试：${extra}`) : '同步失败，请稍后重试';
+    showStatus(message, 'error');
+  }finally{
+    isSaving = false;
+  }
+}
+
+
+
+async function refreshFromServer(options = {}){
+  const forced = options && options.forced;
+  if(!isReady || !currentGameId) return;
+  if(isSaving && !forced) return;
+  if(isAutoSyncing) return;
+  isAutoSyncing = true;
+  const localUpdated = state && state.meta ? state.meta.updatedAt : '';
+  try{
+    const remote = await apiFetchGame(currentGameId);
+    if(!remote || !remote.state){
+      return;
+    }
+    const remoteState = remote.state;
+    const remoteUpdated = (remoteState.meta && remoteState.meta.updatedAt) ? remoteState.meta.updatedAt : '';
+    if(!forced && localUpdated && remoteUpdated && remoteUpdated <= localUpdated){
+      return;
+    }
+    state = hydrateState(remoteState, currentGameId);
+    updateUI();
+  }catch(err){
+    console.warn('自动同步失败', err);
+  }finally{
+    isAutoSyncing = false;
+  }
+}
+
+function startAutoRefresh(){
+  if(autoRefreshTimer){
+    clearInterval(autoRefreshTimer);
+  }
+  autoRefreshTimer = setInterval(()=>{
+    refreshFromServer();
+  }, 2000);
+  refreshFromServer({ forced: true });
+}
+
+function buildShareLink(){
+  const url = new URL(window.location.href);
+  if(currentGameId){
+    url.searchParams.set('id', currentGameId);
+  }
+  return url.toString();
+}
+
+async function copyShareLink(){
+  if(!currentGameId) return;
+  const text = buildShareLink();
+  try{
+    await navigator.clipboard.writeText(text);
+    showStatus('链接已复制', 'ok');
+  }catch(err){
+    console.warn('Clipboard 复制失败，尝试使用提示框', err);
+    window.prompt('手动复制链接', text);
+  }
+}
+
+async function createNewGameFromUI(){
+  const confirmMsg = '创建新牌局将生成新的牌局ID，当前数据不会自动保留。继续吗？';
+  if(!window.confirm(confirmMsg)) return;
+  const initial = freshState();
+  try{
+    showStatus('创建新牌局中…', 'sync');
+    const created = await apiCreateGame(initial);
+    currentGameId = created.id;
+    state = hydrateState(created.state || initial, currentGameId);
+    updateUrlWithId(currentGameId);
+    isReady = true;
+    updateUI();
+    showStatus('已创建新牌局', 'ok');
+    startAutoRefresh();
+  }catch(err){
+    console.error('创建牌局失败', err);
+    if(err && err.detail){
+      console.error('server response detail', err.detail);
+    }
+    const extra = extractServerMessage(err && err.detail);
+    const message = extra ? ('创建牌局失败: ' + extra) : '创建牌局失败';
+    showStatus(message, 'error');
+  }
+}
+
+async function initialize(){
+  const params = new URLSearchParams(window.location.search);
+  const requestedId = params.get('id');
+  let loaded = false;
+  showStatus('加载中…', 'sync');
+  try{
+    if(requestedId){
+      const remote = await apiFetchGame(requestedId);
+      currentGameId = remote.id || requestedId;
+      state = hydrateState(remote.state, currentGameId);
+      updateUrlWithId(currentGameId);
+      showStatus('牌局已加载', 'ok');
+    }else{
+      const initial = freshState();
+      const created = await apiCreateGame(initial);
+      currentGameId = created.id;
+      state = hydrateState(created.state || initial, currentGameId);
+      updateUrlWithId(currentGameId);
+      showStatus('已创建新牌局', 'ok');
+    }
+    loaded = true;
+  }catch(err){
+    if(err && err.code === 'NOT_FOUND'){
+      try{
+        const initial = freshState();
+        const created = await apiCreateGame(initial);
+        currentGameId = created.id;
+        state = hydrateState(created.state || initial, currentGameId);
+        updateUrlWithId(currentGameId);
+        showStatus('已创建新牌局', 'warn');
+        loaded = true;
+      }catch(inner){
+        console.error('自动创建新牌局失败', inner);
+        showStatus('无法创建新牌局，请稍后再试', 'error');
+      }
+    }else{
+      console.error('加载牌局失败', err);
+      showStatus('加载失败，请稍后刷新', 'error');
+    }
+  }
+  isReady = loaded;
+  updateUI();
+  startAutoRefresh();
+}
+
+/* ===================== 工具函数 ===================== */
+function el(id){ return document.getElementById(id); }
+function teamLevel(team){ return team==='A' ? state.aLevel : state.bLevel; }
+function setTeamLevel(team, idx){ if(team==='A') state.aLevel = idx; else state.bLevel = idx; }
+function clampA(idx){ return Math.min(MAX_INDEX, Math.max(0, idx)); }
+function isDealerAtA(){ return state.dealer && teamLevel(state.dealer) === MAX_INDEX; }
+
+/* 将一手对局应用到当前状态（核心规则） */
+function applyRoundCore(winner, delta, pattern, collectNotes=true){
+  const entry = { winner, delta, pattern, notes: [], ts: Date.now() };
+  const loser = (winner === 'A' ? 'B' : 'A');
+
+  let skipWinnerDeltaThisRound = false; // 某些情形（第3次A不过回2）需要跳过本手给赢家加级
+
+  // ——A 阶段特殊判定：仅当“庄家在A”时介入（保持你原有结构不变）——
+  if (isDealerAtA()) {
+    if (state.dealer === winner) {
+      // 庄家在A且赢
+      if (delta >= 2) {
+        // 一二 / 一三 才算“过A” -> 终局（与你原逻辑一致，但收紧条件）
+        entry.notes.push('庄家在A且赢（过A）：整局结束');
+        state.gameOver = true;
+        state.history.push(entry);
+        state.dealer = winner; // 记账一致
+        return;
+      } else {
+        // delta===1 -> 一四：赢但未过A，记A不过（A1失败）+1，继续打A
+        state.a1Fails[state.dealer] = (state.a1Fails[state.dealer] || 0) + 1;
+        entry.notes.push(`${state.dealer} 在A赢“一四”未过：A1失败（${state.a1Fails[state.dealer]}/3）`);
+        if (state.a1Fails[state.dealer] >= 3) {
+          // 第3次作为庄家打A不过 -> 回到2，并清零计数
+          setTeamLevel(state.dealer, 0);
+          entry.notes.push(`${state.dealer} 第3次A1失败：回到2`);
+          state.a1Fails[state.dealer] = 0;
+          // 若本手赢家正是该庄家，为保持“回到2”的落点，本手不再给其加级
+          skipWinnerDeltaThisRound = true;
+        }
+      }
+    } else {
+      // 庄家在A且输 -> 记A不过（A1失败）+1，达到3次回到2（保持你原逻辑）
+      state.a1Fails[state.dealer] = (state.a1Fails[state.dealer] || 0) + 1;
+      entry.notes.push(`${state.dealer} 在A失利：A1失败（${state.a1Fails[state.dealer]}/3）`);
+      if (state.a1Fails[state.dealer] >= 3) {
+        setTeamLevel(state.dealer, 0);
+        entry.notes.push(`${state.dealer} 第3次A1失败：回到2`);
+        state.a1Fails[state.dealer] = 0;
+      }
+    }
+  }
+
+  // ——常规加级：只给赢家涨级（封顶A）。是否在A阶段仍加级由你原来的开关控制——
+  const winnerAtA = (teamLevel(winner) === MAX_INDEX);
+  const loserAtA  = (teamLevel(loser)  === MAX_INDEX);
+  const shouldApply =
+    APPLY_WINNER_DELTA_EVEN_IF_OPP_AT_A ? true : (!winnerAtA && !loserAtA);
+
+  if (!skipWinnerDeltaThisRound && shouldApply) {
+    const newIdx = clampA(teamLevel(winner) + delta);
+    setTeamLevel(winner, newIdx);
+  }
+
+  // 庄家更新为本手赢家（保持原规则：上一把赢的坐庄）
+  state.dealer = winner;
+
+  // 记录历史
+  state.history.push(entry);
+}
+
+/* 撤回：回放历史重算 */
+function recomputeFromHistory(){
+  const snapshot = state.history.map(x => ({winner:x.winner, delta:x.delta, pattern:x.pattern}));
+  const previousMeta = state.meta;
+  const previousTeams = state.teams;
+  state = freshState();
+  state.teams = mergeTeams(previousTeams);
+  state.meta = Object.assign({}, state.meta, previousMeta || {});
+  state.meta.id = currentGameId;
+  for(const h of snapshot){
+    applyRoundCore(h.winner, h.delta, h.pattern);
+    if(state.gameOver) break; // 若某一步就终局，后面本不应存在，但稳妥处理
+  }
+}
+
+/* ===================== 事件处理 ===================== */
+function record(winner, delta, pattern){
+  if(!isReady || state.gameOver) return;
+  applyRoundCore(winner, delta, pattern);
+  state.meta.updatedAt = new Date().toISOString();
+  updateUI();
+  persistState();
+}
+function undo(){
+  if(!isReady || state.history.length === 0) return;
+  state.history.pop();
+  recomputeFromHistory();
+  state.meta.updatedAt = new Date().toISOString();
+  updateUI();
+  persistState();
+}
+function resetAll(){
+  if(!isReady) return;
+  if(!confirm('确定要重置本局所有数据吗？（云端存档也会清空）')) return;
+  const previousMeta = state.meta;
+  state = freshState();
+  state.meta = Object.assign({}, state.meta, previousMeta || {});
+  state.meta.id = currentGameId;
+  state.meta.updatedAt = new Date().toISOString();
+  updateUI();
+  persistState();
+}
+
+/* ===================== UI 渲染 ===================== */
+
+function updateUI() {
+  updateGameIdDisplay();
+
+  const nameA = getTeamName('A');
+  const nameB = getTeamName('B');
+
+  el('lvA').textContent = LEVELS[state.aLevel];
+  el('lvB').textContent = LEVELS[state.bLevel];
+
+  const remainingA = MAX_INDEX - state.aLevel;
+  const remainingB = MAX_INDEX - state.bLevel;
+  el('infoA').textContent = state.aLevel === MAX_INDEX ? `${nameA} 已到顶级` : `${nameA} 距顶级还差 ${remainingA} 级`;
+  el('infoB').textContent = state.bLevel === MAX_INDEX ? `${nameB} 已到顶级` : `${nameB} 距顶级还差 ${remainingB} 级`;
+  el('failA').textContent = `${nameA} A 失守：${state.a1Fails.A || 0}/3`;
+  el('failB').textContent = `${nameB} A 失守：${state.a1Fails.B || 0}/3`;
+
+  const teamBtnA = el('teamNameA');
+  if (teamBtnA) {
+    teamBtnA.textContent = nameA;
+    teamBtnA.disabled = !isReady;
+  }
+  const teamBtnB = el('teamNameB');
+  if (teamBtnB) {
+    teamBtnB.textContent = nameB;
+    teamBtnB.disabled = !isReady;
+  }
+
+  TEAM_ACTIONS.A.forEach(({ id, delta, label }) => {
+    const btn = el(id);
+    if (btn) {
+      btn.textContent = `${label} +${delta}`;
+    }
+  });
+  TEAM_ACTIONS.B.forEach(({ id, delta, label }) => {
+    const btn = el(id);
+    if (btn) {
+      btn.textContent = `${label} +${delta}`;
+    }
+  });
+
+  const disabled = (!isReady) || state.gameOver;
+  ['btnA12','btnA13','btnA14','btnB12','btnB13','btnB14'].forEach(id => {
+    const btn = el(id);
+    if (btn) {
+      btn.disabled = disabled;
+    }
+  });
+  const undoButton = el('btnUndo');
+  if (undoButton) {
+    undoButton.disabled = (!isReady) || state.history.length === 0;
+  }
+  const allowActions = !!isReady;
+  if (el('btnReset')) el('btnReset').disabled = !allowActions;
+  if (el('btnHistory')) el('btnHistory').disabled = !allowActions;
+  if (el('btnCopyLink')) el('btnCopyLink').disabled = (!allowActions) || !currentGameId;
+
+  const dealerLabel = state.dealer ? getTeamName(state.dealer) : '未确定';
+  el('dealerText').textContent = `当前庄家：${dealerLabel}`;
+  el('cardA').classList.toggle('dealing', state.dealer === 'A');
+  el('cardB').classList.toggle('dealing', state.dealer === 'B');
+
+  const winnerLayer = el('winner');
+  if (state.gameOver) {
+    const text = state.dealer ? `${getTeamName(state.dealer)} 获胜` : '本局结束';
+    el('winnerText').textContent = text;
+    winnerLayer.style.display = 'flex';
+  } else {
+    winnerLayer.style.display = 'none';
+  }
+
+  const list = el('historyList');
+  list.innerHTML = '';
+  state.history.forEach((h, i) => {
+    const li = document.createElement('li');
+    li.className = 'history-item';
+    const left = document.createElement('div');
+    const winnerName = getTeamName(h.winner);
+    left.innerHTML = `<strong>#${i + 1}</strong> <span class="tag">${winnerName} · ${h.pattern} +${h.delta}</span>`;
+    const right = document.createElement('div');
+    right.className = 'note';
+    right.textContent = (h.notes && h.notes.length) ? h.notes.join('、') : '';
+    li.appendChild(left);
+    li.appendChild(right);
+    list.appendChild(li);
+  });
+}
+
+
+
+/* ===================== 绑定事件 ===================== */
+el('btnA12').addEventListener('click',()=>record('A',3,'双上'));
+el('btnA13').addEventListener('click',()=>record('A',2,'一三'));
+el('btnA14').addEventListener('click',()=>record('A',1,'一四'));
+
+el('btnB12').addEventListener('click',()=>record('B',3,'双上'));
+el('btnB13').addEventListener('click',()=>record('B',2,'一三'));
+el('btnB14').addEventListener('click',()=>record('B',1,'一四'));
+
+el('btnUndo').addEventListener('click', undo);
+el('btnReset').addEventListener('click', resetAll);
+
+const teamButtonA = el('teamNameA');
+if(teamButtonA){ teamButtonA.addEventListener('click', ()=> promptTeamName('A')); }
+const teamButtonB = el('teamNameB');
+if(teamButtonB){ teamButtonB.addEventListener('click', ()=> promptTeamName('B')); }
+const renameCancel = el('renameCancel');
+if(renameCancel){ renameCancel.addEventListener('click', closeRenameModal); }
+const renameConfirm = el('renameConfirm');
+if(renameConfirm){ renameConfirm.addEventListener('click', submitRenameModal); }
+const renameOverlay = el('renameOverlay');
+if(renameOverlay){
+  renameOverlay.addEventListener('click', (evt)=>{
+    if(evt.target === renameOverlay){ closeRenameModal(); }
+  });
+}
+const renameInput = el('renameInput');
+if(renameInput){
+  renameInput.addEventListener('keydown', (evt)=>{
+    if(evt.key === 'Enter'){
+      evt.preventDefault();
+      submitRenameModal();
+    } else if(evt.key === 'Escape'){
+      evt.preventDefault();
+      closeRenameModal();
+    }
+  });
+}
+
+el('btnCopyLink').addEventListener('click', ()=>{ if(!isReady || !currentGameId) return; copyShareLink(); });
+el('btnNewGame').addEventListener('click', ()=>{ createNewGameFromUI(); });
+el('btnHistory').addEventListener('click', ()=>{ if(!isReady) return; el('historyOverlay').style.display='flex'; });
+el('btnCloseHistory').addEventListener('click', ()=>{ el('historyOverlay').style.display='none'; });
+el('btnExport').addEventListener('click', ()=>{
+  const data = JSON.stringify(state, null, 2);
+  // 简易下载
+  const blob = new Blob([data], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `guandan-${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+el('closeWinner').addEventListener('click', ()=>{ el('winner').style.display='none'; });
+
+/* ===================== 首次渲染 ===================== */
+updateUI();
+initialize();
+</script>
+</body>
+</html>
+
+
+
