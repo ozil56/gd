@@ -1,7 +1,7 @@
 # 掼蛋记分器 2.0
 
 基于文件存储的掼蛋记分器，支持通过牌局 ID 分享和同步即时比分。  
-[demo站点](https://game.lucyqin.cn/gd)
+<a href="https://game.lucyqin.cn/gd" target="_blank" rel="noopener noreferrer">demo站点</a>
 
 ## 部署说明
 
